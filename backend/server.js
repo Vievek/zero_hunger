@@ -1,63 +1,42 @@
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
+const passport = require("passport");
 require("dotenv").config();
+
+// Import routes
+const authRoutes = require("./routes/auth");
+const donationRoutes = require("./routes/donations");
+const foodSafeRoutes = require("./routes/foodsafe");
+const logisticsRoutes = require("./routes/logistics");
+const adminRoutes = require("./routes/admin");
 
 const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true }));
+
+// Passport config
+require("./config/passport")(passport);
+app.use(passport.initialize());
+
+// Routes
+app.use("/api/auth", authRoutes);
+app.use("/api/donations", donationRoutes);
+app.use("/api/foodsafe", foodSafeRoutes);
+app.use("/api/logistics", logisticsRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Database connection
 mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/rbac-app", {
+  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/foodlink", {
     useNewUrlParser: true,
     useUnifiedTopology: true,
   })
-  .then(() => console.log("MongoDB connected successfully"))
-  .catch((err) => console.log("MongoDB connection error:", err));
-
-// Import and use Passport config
-require("./config/passport");
-
-// Routes
-app.use("/api/auth", require("./routes/auth"));
-
-// Test route
-app.get("/", (req, res) => {
-  res.json({ message: "RBAC Backend API is running!" });
-});
-
-// Health check route
-app.get("/api/health", (req, res) => {
-  res.json({
-    success: true,
-    message: "Server is healthy",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-// Handle undefined routes - FIXED THIS LINE
-app.use((req, res) => {
-  res.status(404).json({
-    success: false,
-    message: `Route not found: ${req.method} ${req.url}`,
-  });
-});
-
-// Error handling middleware
-app.use((error, req, res, next) => {
-  console.error("Error:", error);
-  res.status(500).json({
-    success: false,
-    message: "Internal server error",
-    error: process.env.NODE_ENV === "development" ? error.message : {},
-  });
-});
+  .then(() => console.log("MongoDB connected"))
+  .catch((err) => console.log(err));
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-  console.log(`Environment: ${process.env.NODE_ENV || "development"}`);
-});
+app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
