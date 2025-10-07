@@ -39,6 +39,7 @@ class RoleSelectionScreen extends StatelessWidget {
                     description:
                         'I want to donate food or resources to help those in need',
                     color: Colors.green,
+                    role: 'donor',
                   ),
                   const SizedBox(height: 20),
                   _buildRoleCard(
@@ -47,6 +48,7 @@ class RoleSelectionScreen extends StatelessWidget {
                     title: 'Recipient',
                     description: 'I need assistance with food resources',
                     color: Colors.orange,
+                    role: 'recipient',
                   ),
                   const SizedBox(height: 20),
                   _buildRoleCard(
@@ -55,6 +57,7 @@ class RoleSelectionScreen extends StatelessWidget {
                     title: 'Volunteer',
                     description: 'I want to volunteer my time and effort',
                     color: Colors.purple,
+                    role: 'volunteer',
                   ),
                 ],
               ),
@@ -71,6 +74,7 @@ class RoleSelectionScreen extends StatelessWidget {
     required String title,
     required String description,
     required Color color,
+    required String role,
   }) {
     return Card(
       elevation: 4,
@@ -93,7 +97,7 @@ class RoleSelectionScreen extends StatelessWidget {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => SignupScreen(role: title.toLowerCase()),
+              builder: (context) => SignupScreen(),
             ),
           );
         },

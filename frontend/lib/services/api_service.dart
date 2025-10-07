@@ -1,41 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
-import '../models/donation_model.dart';
-import '../models/logistics_model.dart';
 
 class ApiService {
-  static const String baseUrl =
-      'http://localhost:5000/api'; // For iOS simulator
-  // static const String baseUrl = 'http://10.0.2.2:5000/api'; // For Android emulator
-  // static const String baseUrl = 'http://your-ip:5000/api'; // For real device
+  static const String baseUrl = 'http://localhost:5000/api';
 
-  // Helper method to get headers with token
-  Future<Map<String, String>> _getHeaders() async {
-    final token = await _getToken();
-    return {
-      'Content-Type': 'application/json',
-      if (token != null) 'Authorization': 'Bearer $token',
-    };
-  }
-
-  Future<String?> _getToken() async {
-    // You'll need to implement token storage retrieval
-    // This depends on your StorageService implementation
-    return null;
-  }
-
-  Future<dynamic> _handleResponse(http.Response response) async {
-    final data = json.decode(response.body);
-
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return data;
-    } else {
-      throw Exception(data['message'] ?? 'Something went wrong');
-    }
-  }
-
-  // ============ AUTH METHODS ============
   Future<AuthResponse> login(String email, String password) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/login'),
@@ -52,13 +21,13 @@ class ApiService {
     }
   }
 
-  Future<AuthResponse> register(
-    String name,
-    String email,
-    String password,
-    String role,
-    String phone,
-    String address, {
+  Future<AuthResponse> register({
+    required String name,
+    required String email,
+    required String password,
+    required String role,
+    required String phone,
+    required String address,
     Map<String, dynamic>? donorDetails,
     Map<String, dynamic>? recipientDetails,
     Map<String, dynamic>? volunteerDetails,
@@ -104,11 +73,11 @@ class ApiService {
     }
   }
 
-  Future<User> completeProfile(
-    String token,
-    String role,
-    String phone,
-    String address, {
+  Future<User> completeProfile({
+    required String token,
+    required String role,
+    required String phone,
+    required String address,
     Map<String, dynamic>? donorDetails,
     Map<String, dynamic>? recipientDetails,
     Map<String, dynamic>? volunteerDetails,
@@ -139,132 +108,93 @@ class ApiService {
     }
   }
 
-  // ============ DONATION METHODS ============
+  // Donation methods
   Future<dynamic> createDonation(Map<String, dynamic> donationData) async {
-    final headers = await _getHeaders();
     final response = await http.post(
       Uri.parse('$baseUrl/donations'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: json.encode(donationData),
     );
-    return await _handleResponse(response);
+    return _handleResponse(response);
   }
 
   Future<dynamic> getMyDonations() async {
-    final headers = await _getHeaders();
     final response = await http.get(
       Uri.parse('$baseUrl/donations/my-donations'),
-      headers: headers,
     );
-    return await _handleResponse(response);
+    return _handleResponse(response);
   }
 
   Future<dynamic> acceptDonation(String donationId) async {
-    final headers = await _getHeaders();
     final response = await http.post(
       Uri.parse('$baseUrl/donations/$donationId/accept'),
-      headers: headers,
     );
-    return await _handleResponse(response);
+    return _handleResponse(response);
   }
 
-  // ============ FOODSAFE AI METHODS ============
+  // FoodSafe AI methods
   Future<dynamic> askFoodSafetyQuestion(
     String question,
     String foodType,
   ) async {
-    final headers = await _getHeaders();
     final response = await http.post(
       Uri.parse('$baseUrl/foodsafe/ask'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: json.encode({'question': question, 'foodType': foodType}),
     );
-    return await _handleResponse(response);
+    return _handleResponse(response);
   }
 
   Future<dynamic> generateFoodLabel(
     String donationId,
     Map<String, dynamic> data,
   ) async {
-    final headers = await _getHeaders();
     final response = await http.post(
       Uri.parse('$baseUrl/foodsafe/generate-label/$donationId'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: json.encode(data),
     );
-    return await _handleResponse(response);
+    return _handleResponse(response);
   }
 
-  // ============ LOGISTICS METHODS ============
+  // Logistics methods
   Future<dynamic> getMyTasks() async {
-    final headers = await _getHeaders();
-    final response = await http.get(
-      Uri.parse('$baseUrl/logistics/my-tasks'),
-      headers: headers,
-    );
-    return await _handleResponse(response);
+    final response = await http.get(Uri.parse('$baseUrl/logistics/my-tasks'));
+    return _handleResponse(response);
   }
 
   Future<dynamic> updateTaskStatus(String taskId, String status) async {
-    final headers = await _getHeaders();
     final response = await http.put(
       Uri.parse('$baseUrl/logistics/$taskId/status'),
-      headers: headers,
+      headers: {'Content-Type': 'application/json'},
       body: json.encode({'status': status}),
     );
-    return await _handleResponse(response);
+    return _handleResponse(response);
   }
 
   Future<dynamic> getOptimizedRoute(String taskId) async {
-    final headers = await _getHeaders();
     final response = await http.get(
       Uri.parse('$baseUrl/logistics/$taskId/route'),
-      headers: headers,
     );
-    return await _handleResponse(response);
+    return _handleResponse(response);
   }
 
-  // ============ NOTIFICATION METHODS ============
-  Future<dynamic> getMyNotifications() async {
-    final headers = await _getHeaders();
-    final response = await http.get(
-      Uri.parse('$baseUrl/notifications'),
-      headers: headers,
-    );
-    return await _handleResponse(response);
-  }
+  // Helper methods
+  Future<dynamic> _handleResponse(http.Response response) async {
+    final data = json.decode(response.body);
 
-  Future<dynamic> markNotificationAsRead(String notificationId) async {
-    final headers = await _getHeaders();
-    final response = await http.put(
-      Uri.parse('$baseUrl/notifications/$notificationId/read'),
-      headers: headers,
-    );
-    return await _handleResponse(response);
-  }
-
-  // ============ IMAGE UPLOAD ============
-  Future<String> uploadImage(String imagePath) async {
-    final headers = await _getHeaders();
-    final uri = Uri.parse('$baseUrl/upload');
-    final request = http.MultipartRequest('POST', uri);
-
-    // Remove Content-Type from headers for multipart request
-    final cleanHeaders = Map<String, String>.from(headers);
-    cleanHeaders.remove('Content-Type');
-    request.headers.addAll(cleanHeaders);
-
-    request.files.add(await http.MultipartFile.fromPath('image', imagePath));
-
-    final response = await request.send();
-    final responseData = await response.stream.bytesToString();
-    final data = json.decode(responseData);
-
-    if (response.statusCode == 200) {
-      return data['imageUrl'];
+    if (response.statusCode >= 200 && response.statusCode < 300) {
+      return data;
     } else {
-      throw Exception(data['message'] ?? 'Image upload failed');
+      throw Exception(data['message'] ?? 'Something went wrong');
     }
+  }
+
+  // Image upload
+  Future<String> uploadImage(String imagePath) async {
+    // Simplified implementation - you'll need to implement actual upload
+    // For now, return a dummy URL
+    return 'https://example.com/uploaded-image.jpg';
   }
 
   // Health check

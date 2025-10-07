@@ -58,7 +58,7 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    'Task #${task['_id'].substring(0, 8)}',
+                    'Task #${task['_id']?.substring(0, 8) ?? 'Unknown'}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -113,11 +113,6 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
   }
 
   Widget _buildActionButtons(Map<String, dynamic> task) {
-    final logisticsProvider = Provider.of<LogisticsProvider>(
-      context,
-      listen: false,
-    );
-
     return Row(
       children: [
         if (task['status'] == 'assigned') ...[
@@ -181,8 +176,12 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
   }
 
   String _formatDateTime(String dateTimeString) {
-    final dateTime = DateTime.parse(dateTimeString);
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+    try {
+      final dateTime = DateTime.parse(dateTimeString);
+      return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return 'Invalid date';
+    }
   }
 
   Future<void> _updateTaskStatus(String taskId, String status) async {
@@ -192,18 +191,21 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
         listen: false,
       ).updateTaskStatus(taskId, status);
 
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Task status updated to $status')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Task status updated to $status')),
+        );
+      }
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to update status: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Failed to update status: $e')));
+      }
     }
   }
 
   void _showDirections(Map<String, dynamic> task) {
-    // In production, integrate with Google Maps
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -229,7 +231,6 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
           ),
           ElevatedButton(
             onPressed: () {
-              // Open in Google Maps
               Navigator.pop(context);
             },
             child: const Text('OPEN IN MAPS'),

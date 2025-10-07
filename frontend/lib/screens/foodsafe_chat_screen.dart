@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
 import '../services/api_service.dart';
 
 class FoodSafeChatScreen extends StatefulWidget {
@@ -14,6 +13,13 @@ class _FoodSafeChatScreenState extends State<FoodSafeChatScreen> {
   final TextEditingController _textController = TextEditingController();
   final TextEditingController _foodTypeController = TextEditingController();
   bool _isLoading = false;
+
+  @override
+  void dispose() {
+    _textController.dispose();
+    _foodTypeController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -101,41 +107,45 @@ class _FoodSafeChatScreenState extends State<FoodSafeChatScreen> {
   }
 
   List<Widget> _buildAdditionalInfo(Map<String, dynamic> data) {
-    return [
-      if (data['safetyGuidelines'] != null) ...[
+    final widgets = <Widget>[];
+
+    if (data['safetyGuidelines'] != null) {
+      widgets.addAll([
         const SizedBox(height: 8),
         const Text(
           'Safety Guidelines:',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        ...(data['safetyGuidelines'] as List)
-            .map((guideline) => Text('• $guideline'))
-            .toList(),
-      ],
-      if (data['storageRecommendations'] != null) ...[
+        for (final guideline in data['safetyGuidelines'] as List)
+          Text('• $guideline'),
+      ]);
+    }
+
+    if (data['storageRecommendations'] != null) {
+      widgets.addAll([
         const SizedBox(height: 8),
         const Text(
           'Storage Recommendations:',
           style: TextStyle(fontWeight: FontWeight.bold),
         ),
-        ...(data['storageRecommendations'] as List)
-            .map((rec) => Text('• $rec'))
-            .toList(),
-      ],
-      if (data['sources'] != null) ...[
+        for (final rec in data['storageRecommendations'] as List)
+          Text('• $rec'),
+      ]);
+    }
+
+    if (data['sources'] != null) {
+      widgets.addAll([
         const SizedBox(height: 8),
         const Text(
           'Sources:',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
         ),
-        ...(data['sources'] as List)
-            .map(
-              (source) =>
-                  Text('• $source', style: const TextStyle(fontSize: 12)),
-            )
-            .toList(),
-      ],
-    ];
+        for (final source in data['sources'] as List)
+          Text('• $source', style: const TextStyle(fontSize: 12)),
+      ]);
+    }
+
+    return widgets;
   }
 
   Widget _buildInputArea() {

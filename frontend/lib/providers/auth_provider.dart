@@ -100,12 +100,12 @@ class AuthProvider with ChangeNotifier {
 
     try {
       final authResponse = await _apiService.register(
-        name,
-        email,
-        password,
-        role,
-        phone,
-        address,
+        name: name,
+        email: email,
+        password: password,
+        role: role,
+        phone: phone,
+        address: address,
         donorDetails: donorDetails,
         recipientDetails: recipientDetails,
         volunteerDetails: volunteerDetails,
