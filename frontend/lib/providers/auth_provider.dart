@@ -9,11 +9,13 @@ class AuthProvider with ChangeNotifier {
   String? _token;
   bool _isLoading = false;
   bool _isAuthenticated = false;
+  String? _error;
 
   User? get user => _user;
   String? get token => _token;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
+  String? get error => _error;
 
   final ApiService _apiService = ApiService();
   final StorageService _storageService = StorageService();
@@ -52,6 +54,7 @@ class AuthProvider with ChangeNotifier {
   // Manual login
   Future<void> login(String email, String password, bool saveLogin) async {
     _isLoading = true;
+    _error = null;
     notifyListeners();
 
     try {
@@ -68,25 +71,31 @@ class AuthProvider with ChangeNotifier {
         );
       }
 
+      _isLoading = false;
       notifyListeners();
     } catch (error) {
       _isLoading = false;
+      _error = error.toString();
       notifyListeners();
       rethrow;
     }
   }
 
-  // Manual registration
-  Future<void> register(
-    String name,
-    String email,
-    String password,
-    String role,
-    String phone,
-    String address,
-    bool saveLogin,
-  ) async {
+  // Enhanced registration with role-specific details
+  Future<void> register({
+    required String name,
+    required String email,
+    required String password,
+    required String role,
+    required String phone,
+    required String address,
+    required bool saveLogin,
+    Map<String, dynamic>? donorDetails,
+    Map<String, dynamic>? recipientDetails,
+    Map<String, dynamic>? volunteerDetails,
+  }) async {
     _isLoading = true;
+    _error = null;
     notifyListeners();
 
     try {
@@ -97,6 +106,9 @@ class AuthProvider with ChangeNotifier {
         role,
         phone,
         address,
+        donorDetails: donorDetails,
+        recipientDetails: recipientDetails,
+        volunteerDetails: volunteerDetails,
       );
       _user = authResponse.user;
       _token = authResponse.token;
@@ -110,9 +122,11 @@ class AuthProvider with ChangeNotifier {
         );
       }
 
+      _isLoading = false;
       notifyListeners();
     } catch (error) {
       _isLoading = false;
+      _error = error.toString();
       notifyListeners();
       rethrow;
     }
@@ -121,6 +135,7 @@ class AuthProvider with ChangeNotifier {
   // Google sign-in
   Future<void> googleSignIn(bool saveLogin) async {
     _isLoading = true;
+    _error = null;
     notifyListeners();
 
     try {
@@ -129,32 +144,38 @@ class AuthProvider with ChangeNotifier {
         throw Exception('Google sign-in cancelled');
       }
 
-      // For now, simulate Google auth
+      // For now, simulate Google auth - you'll need to implement backend Google auth
       _user = User(
         id: googleUser.id,
         name: googleUser.displayName ?? 'Google User',
         email: googleUser.email,
-        role: 'donor',
+        role: 'donor', // Default role
         profileCompleted: false,
       );
 
       _isAuthenticated = true;
+      _isLoading = false;
       notifyListeners();
     } catch (error) {
       _isLoading = false;
+      _error = error.toString();
       notifyListeners();
       rethrow;
     }
   }
 
-  // Complete profile after Google sign-in
-  Future<void> completeGoogleProfile(
-    String role,
-    String phone,
-    String address,
-    bool saveLogin,
-  ) async {
+  // Complete profile after Google sign-in with role-specific details
+  Future<void> completeGoogleProfile({
+    required String role,
+    required String phone,
+    required String address,
+    required bool saveLogin,
+    Map<String, dynamic>? donorDetails,
+    Map<String, dynamic>? recipientDetails,
+    Map<String, dynamic>? volunteerDetails,
+  }) async {
     _isLoading = true;
+    _error = null;
     notifyListeners();
 
     try {
@@ -162,11 +183,15 @@ class AuthProvider with ChangeNotifier {
         throw Exception('No user data available');
       }
 
+      // In a real app, you'd call an API endpoint to complete the profile
       _user = _user!.copyWith(
         role: role,
         phone: phone,
         address: address,
         profileCompleted: true,
+        donorDetails: donorDetails,
+        recipientDetails: recipientDetails,
+        volunteerDetails: volunteerDetails,
       );
 
       if (saveLogin) {
@@ -177,9 +202,11 @@ class AuthProvider with ChangeNotifier {
         );
       }
 
+      _isLoading = false;
       notifyListeners();
     } catch (error) {
       _isLoading = false;
+      _error = error.toString();
       notifyListeners();
       rethrow;
     }
@@ -198,17 +225,42 @@ class AuthProvider with ChangeNotifier {
       _user = null;
       _token = null;
       _isAuthenticated = false;
+      _error = null;
       notifyListeners();
     }
   }
 
   // Update user profile
   Future<void> updateProfile(String name, String phone, String address) async {
+    _isLoading = true;
+    notifyListeners();
+
     try {
       _user = _user!.copyWith(name: name, phone: phone, address: address);
+      _isLoading = false;
       notifyListeners();
     } catch (error) {
+      _isLoading = false;
+      _error = error.toString();
+      notifyListeners();
       rethrow;
     }
   }
+
+  // Clear error
+  void clearError() {
+    _error = null;
+    notifyListeners();
+  }
+
+  // Check if user needs to complete profile
+  bool get needsProfileCompletion {
+    return _user != null && !_user!.profileCompleted;
+  }
+
+  // Role-specific getters
+  bool get isDonor => _user?.isDonor ?? false;
+  bool get isRecipient => _user?.isRecipient ?? false;
+  bool get isVolunteer => _user?.isVolunteer ?? false;
+  bool get isAdmin => _user?.isAdmin ?? false;
 }

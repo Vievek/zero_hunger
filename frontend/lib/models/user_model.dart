@@ -8,6 +8,11 @@ class User {
   final bool profileCompleted;
   final String? avatar;
 
+  // Enhanced role-specific fields
+  final Map<String, dynamic>? donorDetails;
+  final Map<String, dynamic>? recipientDetails;
+  final Map<String, dynamic>? volunteerDetails;
+
   User({
     required this.id,
     required this.name,
@@ -17,6 +22,9 @@ class User {
     this.address,
     required this.profileCompleted,
     this.avatar,
+    this.donorDetails,
+    this.recipientDetails,
+    this.volunteerDetails,
   });
 
   factory User.fromJson(Map<String, dynamic> json) {
@@ -29,6 +37,15 @@ class User {
       address: json['address'],
       profileCompleted: json['profileCompleted'] ?? false,
       avatar: json['avatar'],
+      donorDetails: json['donorDetails'] != null
+          ? Map<String, dynamic>.from(json['donorDetails'])
+          : null,
+      recipientDetails: json['recipientDetails'] != null
+          ? Map<String, dynamic>.from(json['recipientDetails'])
+          : null,
+      volunteerDetails: json['volunteerDetails'] != null
+          ? Map<String, dynamic>.from(json['volunteerDetails'])
+          : null,
     );
   }
 
@@ -40,6 +57,9 @@ class User {
       'phone': phone,
       'address': address,
       'profileCompleted': profileCompleted,
+      'donorDetails': donorDetails,
+      'recipientDetails': recipientDetails,
+      'volunteerDetails': volunteerDetails,
     };
   }
 
@@ -49,6 +69,9 @@ class User {
     String? address,
     String? role,
     bool? profileCompleted,
+    Map<String, dynamic>? donorDetails,
+    Map<String, dynamic>? recipientDetails,
+    Map<String, dynamic>? volunteerDetails,
   }) {
     return User(
       id: id,
@@ -59,8 +82,16 @@ class User {
       address: address ?? this.address,
       profileCompleted: profileCompleted ?? this.profileCompleted,
       avatar: avatar,
+      donorDetails: donorDetails ?? this.donorDetails,
+      recipientDetails: recipientDetails ?? this.recipientDetails,
+      volunteerDetails: volunteerDetails ?? this.volunteerDetails,
     );
   }
+
+  bool get isDonor => role == 'donor';
+  bool get isRecipient => role == 'recipient';
+  bool get isVolunteer => role == 'volunteer';
+  bool get isAdmin => role == 'admin';
 }
 
 class AuthResponse {
