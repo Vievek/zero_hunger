@@ -23,14 +23,14 @@ require("./config/passport")(passport);
 app.use(passport.initialize());
 
 // Routes
-app.use("/auth", authRoutes);
-app.use("/donations", donationRoutes);
-app.use("/foodsafe", foodSafeRoutes);
-app.use("/logistics", logisticsRoutes);
-app.use("/admin", adminRoutes);
+app.use("api/auth", authRoutes);
+app.use("api/donations", donationRoutes);
+app.use("api/foodsafe", foodSafeRoutes);
+app.use("api/logistics", logisticsRoutes);
+app.use("api/admin", adminRoutes);
 
 // Health check endpoint
-app.get("/health", (req, res) => {
+app.get("api/health", (req, res) => {
   res.json({
     success: true,
     message: "Server is running",
