@@ -29,6 +29,15 @@ app.use("/api/foodsafe", foodSafeRoutes);
 app.use("/api/logistics", logisticsRoutes);
 app.use("/api/admin", adminRoutes);
 
+// Health check endpoint
+app.get("/api/health", (req, res) => {
+  res.json({
+    success: true,
+    message: "Server is running",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // Database connection
 mongoose
   .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/foodlink", {

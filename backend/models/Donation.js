@@ -30,10 +30,10 @@ const donationSchema = new mongoose.Schema({
   images: [String],
   aiDescription: String,
   categories: [String],
-  tags: [String], // allergens, dietaries
+  tags: [String],
   quantity: {
     amount: Number,
-    unit: String, // meals, kg, portions
+    unit: String,
   },
   handlingWindow: {
     start: Date,

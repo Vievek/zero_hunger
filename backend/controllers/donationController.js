@@ -35,7 +35,7 @@ exports.createDonation = async (req, res) => {
         donation.aiAnalysis = aiAnalysis;
 
         // Set handling window based on AI analysis
-        const handlingWindow = this.calculateHandlingWindow(
+        const handlingWindow = calculateHandlingWindow(
           aiAnalysis.freshnessScore
         );
         donation.handlingWindow = handlingWindow;
@@ -44,7 +44,7 @@ exports.createDonation = async (req, res) => {
         await donation.save();
 
         // Start matching process
-        this.initiateMatching(donation._id);
+        initiateMatching(donation._id);
       } catch (aiError) {
         console.error("AI processing failed:", aiError);
         donation.status = "active"; // Continue without AI data
@@ -65,7 +65,8 @@ exports.createDonation = async (req, res) => {
   }
 };
 
-exports.initiateMatching = async (donationId) => {
+// Helper function to initiate matching
+async function initiateMatching(donationId) {
   try {
     const matches = await matchingService.findBestMatches(donationId);
     const donation = await Donation.findById(donationId);
@@ -89,7 +90,7 @@ exports.initiateMatching = async (donationId) => {
   } catch (error) {
     console.error("Matching process error:", error);
   }
-};
+}
 
 exports.acceptDonation = async (req, res) => {
   try {
@@ -119,6 +120,9 @@ exports.acceptDonation = async (req, res) => {
     await donation.save();
 
     // Create logistics task
+    const donor = await User.findById(donation.donor);
+    const recipient = await User.findById(req.user.id);
+
     const task = new LogisticsTask({
       donation: donationId,
       pickupLocation: {
@@ -127,9 +131,9 @@ exports.acceptDonation = async (req, res) => {
         lng: donation.location.lng,
       },
       dropoffLocation: {
-        address: req.user.recipientDetails.address,
-        lat: req.user.recipientDetails.location?.lat,
-        lng: req.user.recipientDetails.location?.lng,
+        address: recipient.recipientDetails?.address || recipient.address,
+        lat: recipient.recipientDetails?.location?.lat || 0,
+        lng: recipient.recipientDetails?.location?.lng || 0,
       },
       scheduledPickupTime:
         donation.type === "bulk"
@@ -140,7 +144,7 @@ exports.acceptDonation = async (req, res) => {
     await task.save();
 
     // Assign volunteer using GA
-    await this.assignVolunteerToTask(task._id);
+    await assignVolunteerToTask(task._id);
 
     res.json({
       success: true,
@@ -155,7 +159,8 @@ exports.acceptDonation = async (req, res) => {
   }
 };
 
-exports.assignVolunteerToTask = async (taskId) => {
+// Helper function to assign volunteer
+async function assignVolunteerToTask(taskId) {
   try {
     const task = await LogisticsTask.findById(taskId).populate("donation");
     const availableVolunteers = await User.find({
@@ -174,7 +179,7 @@ exports.assignVolunteerToTask = async (taskId) => {
       volunteer: { $exists: false },
     }).populate("donation");
 
-    // Use GA to assign volunteers
+    // Use GA to assign volunteers (simplified for demo)
     const assignment = await routeOptimizationService.assignVolunteerWithGA(
       [task, ...pendingTasks],
       availableVolunteers
@@ -189,13 +194,14 @@ exports.assignVolunteerToTask = async (taskId) => {
     await notificationService.sendTaskAssignment(assignment[task._id], taskId);
 
     // Optimize route if volunteer has multiple tasks
-    await this.optimizeVolunteerRoute(assignment[task._id]);
+    await optimizeVolunteerRoute(assignment[task._id]);
   } catch (error) {
     console.error("Volunteer assignment error:", error);
   }
-};
+}
 
-exports.optimizeVolunteerRoute = async (volunteerId) => {
+// Helper function to optimize volunteer route
+async function optimizeVolunteerRoute(volunteerId) {
   try {
     const tasks = await LogisticsTask.find({
       volunteer: volunteerId,
@@ -214,8 +220,7 @@ exports.optimizeVolunteerRoute = async (volunteerId) => {
 
     // Update tasks with optimized sequence
     tasks.forEach((task, index) => {
-      task.routeSequence =
-        optimizedRoute.optimizedIntermediateWaypointIndex[index];
+      task.routeSequence = index;
       task.optimizedRoute = optimizedRoute;
     });
 
@@ -223,7 +228,7 @@ exports.optimizeVolunteerRoute = async (volunteerId) => {
   } catch (error) {
     console.error("Route optimization error:", error);
   }
-};
+}
 
 exports.getDonorDashboard = async (req, res) => {
   try {
@@ -255,8 +260,8 @@ exports.getDonorDashboard = async (req, res) => {
   }
 };
 
-// Helper function
-exports.calculateHandlingWindow = (freshnessScore) => {
+// Helper function to calculate handling window
+function calculateHandlingWindow(freshnessScore) {
   const now = new Date();
   const hours = freshnessScore * 24; // Scale to 24 hours max
 
@@ -264,4 +269,4 @@ exports.calculateHandlingWindow = (freshnessScore) => {
     start: now,
     end: new Date(now.getTime() + hours * 60 * 60 * 1000),
   };
-};
+}

@@ -32,6 +32,7 @@ const userSchema = new mongoose.Schema(
         default: "pending",
       },
       verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      verificationNotes: String,
     },
     volunteerDetails: {
       vehicleType: {

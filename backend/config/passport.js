@@ -1,9 +1,7 @@
-const passport = require("passport");
 const GoogleStrategy = require("passport-google-oauth20").Strategy;
 const User = require("../models/User");
 
-// Only initialize Google strategy if credentials are provided
-if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+module.exports = function (passport) {
   passport.use(
     new GoogleStrategy(
       {
@@ -13,67 +11,52 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
       },
       async (accessToken, refreshToken, profile, done) => {
         try {
-          console.log("Google profile received:", profile.id);
-
-          // Check if user exists with googleId
+          // Check if user already exists with this Google ID
           let user = await User.findOne({ googleId: profile.id });
 
           if (user) {
-            console.log("User found by googleId:", user.email);
             return done(null, user);
           }
 
-          // Check if user exists with email
+          // Check if user exists with the same email
           user = await User.findOne({ email: profile.emails[0].value });
 
           if (user) {
-            console.log(
-              "User found by email, linking Google account:",
-              user.email
-            );
             // Link Google account to existing user
             user.googleId = profile.id;
-            user.avatar = profile.photos[0].value;
             await user.save();
             return done(null, user);
           }
 
           // Create new user
-          console.log("Creating new user for:", profile.emails[0].value);
-          user = await User.create({
+          const newUser = new User({
             googleId: profile.id,
             name: profile.displayName,
             email: profile.emails[0].value,
-            avatar: profile.photos[0].value,
             profileCompleted: false,
             role: "donor", // Default role
           });
 
-          done(null, user);
+          await newUser.save();
+          return done(null, newUser);
         } catch (error) {
-          console.error("Error in Google strategy:", error);
-          done(error, null);
+          console.error(error);
+          return done(error, null);
         }
       }
     )
   );
-} else {
-  console.warn(
-    "Google OAuth credentials not found. Google login will be disabled."
-  );
-}
 
-passport.serializeUser((user, done) => {
-  done(null, user.id);
-});
+  passport.serializeUser((user, done) => {
+    done(null, user.id);
+  });
 
-passport.deserializeUser(async (id, done) => {
-  try {
-    const user = await User.findById(id);
-    done(null, user);
-  } catch (error) {
-    done(error, null);
-  }
-});
-
-module.exports = passport;
+  passport.deserializeUser(async (id, done) => {
+    try {
+      const user = await User.findById(id);
+      done(null, user);
+    } catch (error) {
+      done(error, null);
+    }
+  });
+};
