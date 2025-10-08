@@ -113,6 +113,8 @@ class AuthProvider with ChangeNotifier {
       _user = authResponse.user;
       _token = authResponse.token;
       _isAuthenticated = true;
+      debugPrint(
+          'Registered user: ${_user!.toJson()} ,authResponse: ${authResponse.toString()}');
 
       if (saveLogin) {
         await _storageService.saveAuthData(
@@ -128,7 +130,7 @@ class AuthProvider with ChangeNotifier {
       _isLoading = false;
       _error = error.toString();
       notifyListeners();
-      rethrow;
+      //rethrow;
     }
   }
 

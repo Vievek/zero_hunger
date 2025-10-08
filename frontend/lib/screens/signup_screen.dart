@@ -36,6 +36,7 @@ class _SignupScreenState extends State<SignupScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    debugPrint("in signup screen");
 
     return Scaffold(
       appBar: AppBar(
@@ -247,7 +248,13 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _signUp() async {
-    if (!_formKey.currentState!.validate()) return;
+    debugPrint('signUp started');
+    if (!_formKey.currentState!.validate()) {
+      debugPrint('Form validation failed');
+      return;
+    }
+    debugPrint(
+        'passing values to register method - ${_nameController.text}, ${_emailController.text}, $_selectedRole, ${_phoneController.text}, ${_addressController.text}, ${_passwordController.text}, ${_confirmPasswordController.text}');
 
     try {
       await Provider.of<AuthProvider>(context, listen: false).register(
@@ -260,9 +267,9 @@ class _SignupScreenState extends State<SignupScreen> {
         saveLogin: _saveLogin,
       );
 
-      // Navigation will be handled by the auth provider state changes
+      debugPrint('register call finished');
     } catch (e) {
-      // Error is already handled in the provider
+      debugPrint('register failed: $e');
     }
   }
 }

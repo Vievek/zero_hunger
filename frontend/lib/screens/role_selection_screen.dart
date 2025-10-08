@@ -6,6 +6,7 @@ class RoleSelectionScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint("in role selection screen");
     return Scaffold(
       appBar: AppBar(
         title: const Text('Join as...'),

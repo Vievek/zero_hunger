@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import 'welcome_screen.dart';
 import 'dashboard_screen.dart';
+import '../services/api_service.dart';
 
 class LaunchScreen extends StatefulWidget {
   const LaunchScreen({super.key});
@@ -12,10 +13,18 @@ class LaunchScreen extends StatefulWidget {
 }
 
 class _LaunchScreenState extends State<LaunchScreen> {
+  final ApiService _apiService = ApiService();
+
   @override
   void initState() {
     super.initState();
     _initializeApp();
+    _checkServerHealth();
+  }
+
+  void _checkServerHealth() async {
+    bool isHealthy = await _apiService.checkServerHealth();
+    debugPrint('Server Health: $isHealthy');
   }
 
   Future<void> _initializeApp() async {

@@ -1,10 +1,10 @@
 name: uee_project
 description: "FoodLink - AI-Powered Food Redistribution Platform"
-publish_to: 'none'
+publish_to: "none"
 version: 0.1.0
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: ">=3.0.0 <4.0.0"
 
 dependencies:
   flutter:
@@ -19,7 +19,7 @@ dependencies:
   firebase_messaging: ^14.7.9
   google_maps_flutter: ^2.5.0
   geolocator: ^11.1.0
-  flutter_local_notifications: ^16.3.0
+  flutter_local_notifications: ^17.2.1
   camera: ^0.10.5
   path_provider: ^2.1.1
   flutter_secure_storage: ^9.0.0

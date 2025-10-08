@@ -7,6 +7,7 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint("in welcome screen");
     return Scaffold(
       body: SafeArea(
         child: Padding(

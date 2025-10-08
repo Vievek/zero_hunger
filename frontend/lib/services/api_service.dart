@@ -1,9 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
+import 'package:flutter/foundation.dart';
 
 class ApiService {
-  static const String baseUrl = 'http://localhost:5000/api';
+  static const String baseUrl = 'https://zero-hunger-three.vercel.app';
 
   Future<AuthResponse> login(String email, String password) async {
     final response = await http.post(
@@ -49,6 +50,9 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: json.encode(requestBody),
     );
+    debugPrint('Status Code: ${response.statusCode}');
+    debugPrint('Response Body: ${response.body}');
+    debugPrint('Redirect Location: ${response.headers['location']}');
 
     if (response.statusCode == 201) {
       final jsonResponse = json.decode(response.body);
