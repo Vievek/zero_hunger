@@ -37,6 +37,9 @@ app.get("/health", (req, res) => {
     timestamp: new Date().toISOString(),
   });
 });
+app.get("/", (req, res) => {
+  res.json({ message: "API is running" });
+});
 
 // Database connection
 mongoose
