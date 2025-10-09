@@ -4,6 +4,9 @@ const cors = require("cors");
 const passport = require("passport");
 require("dotenv").config();
 
+// Import database connection
+const connectDB = require("./config/database");
+
 // Import routes
 const authRoutes = require("./routes/auth");
 const donationRoutes = require("./routes/donations");
@@ -22,6 +25,24 @@ app.use(express.urlencoded({ extended: true }));
 require("./config/passport")(passport);
 app.use(passport.initialize());
 
+// Database connection middleware for Vercel
+app.use(async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (error) {
+    console.error("Database connection failed:", error);
+    res.status(500).json({
+      success: false,
+      message: "Database connection failed",
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Database error"
+          : error.message,
+    });
+  }
+});
+
 // Routes
 app.use("/auth", authRoutes);
 app.use("/donations", donationRoutes);
@@ -29,8 +50,8 @@ app.use("/foodsafe", foodSafeRoutes);
 app.use("/logistics", logisticsRoutes);
 app.use("/admin", adminRoutes);
 
-// Health check endpoint
-app.get("/health", (req, res) => {
+// Health check endpoint (updated)
+app.get("/health", async (req, res) => {
   try {
     const connectionState = mongoose.connection.readyState;
 
@@ -58,28 +79,19 @@ app.get("/health", (req, res) => {
       status: "unhealthy",
       message: "Health check failed",
       timestamp: new Date().toISOString(),
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
     });
   }
 });
+
 app.get("/", (req, res) => {
   res.json({ message: "API is running" });
 });
 
-// Database connection
-mongoose
-  .connect(process.env.MONGODB_URI || "mongodb://localhost:27017/foodlink", {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-  })
-  .then(() => console.log("MongoDB connected"))
-  .catch((err) => console.log(err));
+// Remove the direct mongoose.connect from server.js since we're using connectDB
 
 // Export the app for Vercel serverless handler
 module.exports = app;
-
-// Start server locally only (not on Vercel)
-if (process.env.NODE_ENV !== "production" && !process.env.VERCEL) {
-  const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
-}
