@@ -113,8 +113,6 @@ class AuthProvider with ChangeNotifier {
       _user = authResponse.user;
       _token = authResponse.token;
       _isAuthenticated = true;
-      debugPrint(
-          'Registered user: ${_user!.toJson()} ,authResponse: ${authResponse.toString()}');
 
       if (saveLogin) {
         await _storageService.saveAuthData(
@@ -130,7 +128,7 @@ class AuthProvider with ChangeNotifier {
       _isLoading = false;
       _error = error.toString();
       notifyListeners();
-      //rethrow;
+      rethrow;
     }
   }
 
@@ -146,16 +144,25 @@ class AuthProvider with ChangeNotifier {
         throw Exception('Google sign-in cancelled');
       }
 
-      // For now, simulate Google auth - you'll need to implement backend Google auth
-      _user = User(
-        id: googleUser.id,
-        name: googleUser.displayName ?? 'Google User',
-        email: googleUser.email,
-        role: 'donor', // Default role
-        profileCompleted: false,
+      // Call backend Google auth endpoint
+      final authResponse = await _apiService.googleAuth(
+        googleUser.id,
+        googleUser.displayName ?? 'Google User',
+        googleUser.email,
       );
 
+      _user = authResponse.user;
+      _token = authResponse.token;
       _isAuthenticated = true;
+
+      if (saveLogin) {
+        await _storageService.saveAuthData(
+          _token!,
+          _user!.toJson().toString(),
+          saveLogin,
+        );
+      }
+
       _isLoading = false;
       notifyListeners();
     } catch (error) {
@@ -181,24 +188,25 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_user == null) {
+      if (_user == null || _token == null) {
         throw Exception('No user data available');
       }
 
-      // In a real app, you'd call an API endpoint to complete the profile
-      _user = _user!.copyWith(
+      final updatedUser = await _apiService.completeProfile(
+        token: _token!,
         role: role,
         phone: phone,
         address: address,
-        profileCompleted: true,
         donorDetails: donorDetails,
         recipientDetails: recipientDetails,
         volunteerDetails: volunteerDetails,
       );
 
+      _user = updatedUser;
+
       if (saveLogin) {
         await _storageService.saveAuthData(
-          _token ?? 'google_token',
+          _token!,
           _user!.toJson().toString(),
           saveLogin,
         );

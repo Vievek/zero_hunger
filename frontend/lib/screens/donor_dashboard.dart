@@ -63,9 +63,8 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
       'Active': provider.donations
           .where((d) => ['active', 'matched'].contains(d.status))
           .length,
-      'Completed': provider.donations
-          .where((d) => d.status == 'delivered')
-          .length,
+      'Completed':
+          provider.donations.where((d) => d.status == 'delivered').length,
       'Pending': provider.donations
           .where((d) => ['pending', 'ai_processing'].contains(d.status))
           .length,

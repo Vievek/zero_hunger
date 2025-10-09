@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
-import 'package:flutter/foundation.dart';
 
 class ApiService {
   static const String baseUrl = 'https://zero-hunger-three.vercel.app';
@@ -50,9 +49,6 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: json.encode(requestBody),
     );
-    debugPrint('Status Code: ${response.statusCode}');
-    debugPrint('Response Body: ${response.body}');
-    debugPrint('Redirect Location: ${response.headers['location']}');
 
     if (response.statusCode == 201) {
       final jsonResponse = json.decode(response.body);
@@ -109,6 +105,28 @@ class ApiService {
       return User.fromJson(jsonResponse['user']);
     } else {
       throw Exception('Profile completion failed');
+    }
+  }
+
+  // Google authentication
+  Future<AuthResponse> googleAuth(
+      String googleId, String name, String email) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/google'),
+      headers: {'Content-Type': 'application/json'},
+      body: json.encode({
+        'googleId': googleId,
+        'name': name,
+        'email': email,
+      }),
+    );
+
+    if (response.statusCode == 200 || response.statusCode == 201) {
+      final jsonResponse = json.decode(response.body);
+      return AuthResponse.fromJson(jsonResponse);
+    } else {
+      final error = json.decode(response.body);
+      throw Exception(error['message'] ?? 'Google authentication failed');
     }
   }
 

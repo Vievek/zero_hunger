@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import 'dashboard_screen.dart';
 
 class ProfileCompletionScreen extends StatefulWidget {
   const ProfileCompletionScreen({super.key});
@@ -15,14 +16,174 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
 
+  // Role-specific controllers
+  final TextEditingController _businessNameController = TextEditingController();
+  final TextEditingController _businessTypeController = TextEditingController();
+  final TextEditingController _orgNameController = TextEditingController();
+  final TextEditingController _capacityController = TextEditingController();
+  String? _selectedVehicleType;
+
   String _selectedRole = 'donor';
   bool _saveLogin = true;
 
-  @override
-  void dispose() {
-    _phoneController.dispose();
-    _addressController.dispose();
-    super.dispose();
+  Map<String, dynamic>? _getRoleSpecificDetails() {
+    switch (_selectedRole) {
+      case 'donor':
+        return {
+          'businessName': _businessNameController.text,
+          'businessType': _businessTypeController.text,
+        };
+      case 'recipient':
+        return {
+          'organizationName': _orgNameController.text,
+          'capacity': int.tryParse(_capacityController.text) ?? 0,
+        };
+      case 'volunteer':
+        return {
+          'vehicleType': _selectedVehicleType,
+        };
+      default:
+        return null;
+    }
+  }
+
+  Widget _buildRoleSpecificFields() {
+    switch (_selectedRole) {
+      case 'donor':
+        return Column(
+          children: [
+            TextFormField(
+              controller: _businessNameController,
+              decoration: const InputDecoration(
+                labelText: 'Business Name',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.business),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter your business name';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _businessTypeController,
+              decoration: const InputDecoration(
+                labelText: 'Business Type',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.category),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter your business type';
+                }
+                return null;
+              },
+            ),
+          ],
+        );
+      case 'recipient':
+        return Column(
+          children: [
+            TextFormField(
+              controller: _orgNameController,
+              decoration: const InputDecoration(
+                labelText: 'Organization Name',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.people),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter your organization name';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _capacityController,
+              decoration: const InputDecoration(
+                labelText: 'Capacity (people)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.group),
+              ),
+              keyboardType: TextInputType.number,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter capacity';
+                }
+                return null;
+              },
+            ),
+          ],
+        );
+      case 'volunteer':
+        return Column(
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue:  _selectedVehicleType,
+              decoration: const InputDecoration(
+                labelText: 'Vehicle Type',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.directions_car),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'bike', child: Text('Bike')),
+                DropdownMenuItem(value: 'car', child: Text('Car')),
+                DropdownMenuItem(value: 'van', child: Text('Van')),
+                DropdownMenuItem(value: 'truck', child: Text('Truck')),
+                DropdownMenuItem(value: 'none', child: Text('None')),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _selectedVehicleType = value;
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please select vehicle type';
+                }
+                return null;
+              },
+            ),
+          ],
+        );
+      default:
+        return const SizedBox();
+    }
+  }
+
+  Future<void> _completeProfile() async {
+    if (!_formKey.currentState!.validate()) {
+      return;
+    }
+
+    try {
+      await Provider.of<AuthProvider>(context, listen: false)
+          .completeGoogleProfile(
+        role: _selectedRole,
+        phone: _phoneController.text,
+        address: _addressController.text,
+        saveLogin: _saveLogin,
+        donorDetails:
+            _selectedRole == 'donor' ? _getRoleSpecificDetails() : null,
+        recipientDetails:
+            _selectedRole == 'recipient' ? _getRoleSpecificDetails() : null,
+        volunteerDetails:
+            _selectedRole == 'volunteer' ? _getRoleSpecificDetails() : null,
+      );
+
+      // Navigate to dashboard after successful profile completion
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DashboardScreen()),
+        );
+      }
+    } catch (e) {
+      debugPrint('Profile completion failed: $e');
+    }
   }
 
   @override
@@ -30,7 +191,9 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
     final authProvider = Provider.of<AuthProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Complete Your Profile')),
+      appBar: AppBar(
+        title: const Text('Complete Your Profile'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -38,17 +201,26 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
           child: SingleChildScrollView(
             child: Column(
               children: [
+                const SizedBox(height: 20),
+                const Icon(Icons.person_add, size: 60, color: Colors.blue),
+                const SizedBox(height: 10),
                 const Text(
-                  'Complete your profile to get started',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  'Complete Your Profile',
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 10),
+                const Text(
+                  'Please provide additional information to complete your profile',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
+                ),
+                const SizedBox(height: 30),
 
-                // Role Selection
+                // Role Selection - FIXED: Using DropdownButtonFormField correctly
                 DropdownButtonFormField<String>(
                   initialValue: _selectedRole,
                   decoration: const InputDecoration(
-                    labelText: 'Role',
+                    labelText: 'Select Your Role',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.people),
                   ),
@@ -75,7 +247,11 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
+
+                // Role-specific fields
+                _buildRoleSpecificFields(),
+                const SizedBox(height: 20),
 
                 // Phone Field
                 TextFormField(
@@ -93,7 +269,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
                 // Address Field
                 TextFormField(
@@ -111,7 +287,7 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 20),
 
                 // Save Login Info
                 CheckboxListTile(
@@ -137,10 +313,8 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
                             width: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
-                        : const Text(
-                            'Complete Profile',
-                            style: TextStyle(fontSize: 16),
-                          ),
+                        : const Text('Complete Profile',
+                            style: TextStyle(fontSize: 16)),
                   ),
                 ),
 
@@ -159,25 +333,5 @@ class _ProfileCompletionScreenState extends State<ProfileCompletionScreen> {
         ),
       ),
     );
-  }
-
-  Future<void> _completeProfile() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    try {
-      await Provider.of<AuthProvider>(
-        context,
-        listen: false,
-      ).completeGoogleProfile(
-        role: _selectedRole,
-        phone: _phoneController.text,
-        address: _addressController.text,
-        saveLogin: _saveLogin,
-      );
-
-      // Navigation will be handled by the auth provider state changes
-    } catch (e) {
-      // Error is already handled in the provider
-    }
   }
 }

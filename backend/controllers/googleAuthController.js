@@ -46,7 +46,6 @@ exports.findOrCreateUser = async (accessToken, refreshToken, profile, done) => {
     if (user) {
       // Link Google account to existing user
       user.googleId = profile.id;
-      user.avatar = profile.photos[0].value;
       await user.save();
       return done(null, user);
     }
@@ -56,7 +55,6 @@ exports.findOrCreateUser = async (accessToken, refreshToken, profile, done) => {
       googleId: profile.id,
       name: profile.displayName,
       email: profile.emails[0].value,
-      avatar: profile.photos[0].value,
       profileCompleted: false,
       role: "donor", // Default role, can be changed later
     });

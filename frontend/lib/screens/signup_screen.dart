@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
+import 'dashboard_screen.dart';
 
 class SignupScreen extends StatefulWidget {
-  const SignupScreen({super.key});
+  final String selectedRole;
+
+  const SignupScreen({super.key, required this.selectedRole});
 
   @override
   State<SignupScreen> createState() => _SignupScreenState();
@@ -19,8 +22,21 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
 
-  String _selectedRole = 'donor';
+  // Role-specific controllers
+  final TextEditingController _businessNameController = TextEditingController();
+  final TextEditingController _businessTypeController = TextEditingController();
+  final TextEditingController _orgNameController = TextEditingController();
+  final TextEditingController _capacityController = TextEditingController();
+  String? _selectedVehicleType;
+
+  late String _selectedRole;
   bool _saveLogin = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedRole = widget.selectedRole;
+  }
 
   @override
   void dispose() {
@@ -30,13 +46,148 @@ class _SignupScreenState extends State<SignupScreen> {
     _confirmPasswordController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
+    _businessNameController.dispose();
+    _businessTypeController.dispose();
+    _orgNameController.dispose();
+    _capacityController.dispose();
     super.dispose();
+  }
+
+  Map<String, dynamic>? _getRoleSpecificDetails() {
+    switch (_selectedRole) {
+      case 'donor':
+        return {
+          'businessName': _businessNameController.text,
+          'businessType': _businessTypeController.text,
+        };
+      case 'recipient':
+        return {
+          'organizationName': _orgNameController.text,
+          'capacity': int.tryParse(_capacityController.text) ?? 0,
+        };
+      case 'volunteer':
+        return {
+          'vehicleType': _selectedVehicleType,
+        };
+      default:
+        return null;
+    }
+  }
+
+  Widget _buildRoleSpecificFields() {
+    switch (_selectedRole) {
+      case 'donor':
+        return Column(
+          children: [
+            TextFormField(
+              controller: _businessNameController,
+              decoration: const InputDecoration(
+                labelText: 'Business Name',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.business),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter your business name';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _businessTypeController,
+              decoration: const InputDecoration(
+                labelText: 'Business Type',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.category),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter your business type';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+      case 'recipient':
+        return Column(
+          children: [
+            TextFormField(
+              controller: _orgNameController,
+              decoration: const InputDecoration(
+                labelText: 'Organization Name',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.people),
+              ),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter your organization name';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _capacityController,
+              decoration: const InputDecoration(
+                labelText: 'Capacity (people)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.group),
+              ),
+              keyboardType: TextInputType.number,
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please enter capacity';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+      case 'volunteer':
+        return Column(
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue:  _selectedVehicleType,
+              decoration: const InputDecoration(
+                labelText: 'Vehicle Type',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.directions_car),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'bike', child: Text('Bike')),
+                DropdownMenuItem(value: 'car', child: Text('Car')),
+                DropdownMenuItem(value: 'van', child: Text('Van')),
+                DropdownMenuItem(value: 'truck', child: Text('Truck')),
+                DropdownMenuItem(value: 'none', child: Text('None')),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _selectedVehicleType = value;
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please select vehicle type';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        );
+      default:
+        return const SizedBox();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-    debugPrint("in signup screen");
+    debugPrint("in signup screen with role: $_selectedRole");
 
     return Scaffold(
       appBar: AppBar(
@@ -133,38 +284,21 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Role Selection
-                DropdownButtonFormField<String>(
-                  initialValue: _selectedRole,
+                // Role Display - FIXED: Using read-only TextFormField correctly
+                TextFormField(
+                  controller:
+                      TextEditingController(text: _selectedRole.toUpperCase()),
                   decoration: const InputDecoration(
                     labelText: 'Role',
                     border: OutlineInputBorder(),
                     prefixIcon: Icon(Icons.people),
                   ),
-                  items: const [
-                    DropdownMenuItem(value: 'donor', child: Text('Donor')),
-                    DropdownMenuItem(
-                      value: 'recipient',
-                      child: Text('Recipient Organization'),
-                    ),
-                    DropdownMenuItem(
-                      value: 'volunteer',
-                      child: Text('Volunteer'),
-                    ),
-                  ],
-                  onChanged: (value) {
-                    setState(() {
-                      _selectedRole = value!;
-                    });
-                  },
-                  validator: (value) {
-                    if (value == null) {
-                      return 'Please select a role';
-                    }
-                    return null;
-                  },
+                  readOnly: true,
                 ),
                 const SizedBox(height: 16),
+
+                // Role-specific fields
+                _buildRoleSpecificFields(),
 
                 // Phone Field
                 TextFormField(
@@ -248,13 +382,11 @@ class _SignupScreenState extends State<SignupScreen> {
   }
 
   Future<void> _signUp() async {
-    debugPrint('signUp started');
+    debugPrint('signUp started for role: $_selectedRole');
     if (!_formKey.currentState!.validate()) {
       debugPrint('Form validation failed');
       return;
     }
-    debugPrint(
-        'passing values to register method - ${_nameController.text}, ${_emailController.text}, $_selectedRole, ${_phoneController.text}, ${_addressController.text}, ${_passwordController.text}, ${_confirmPasswordController.text}');
 
     try {
       await Provider.of<AuthProvider>(context, listen: false).register(
@@ -265,7 +397,21 @@ class _SignupScreenState extends State<SignupScreen> {
         phone: _phoneController.text,
         address: _addressController.text,
         saveLogin: _saveLogin,
+        donorDetails:
+            _selectedRole == 'donor' ? _getRoleSpecificDetails() : null,
+        recipientDetails:
+            _selectedRole == 'recipient' ? _getRoleSpecificDetails() : null,
+        volunteerDetails:
+            _selectedRole == 'volunteer' ? _getRoleSpecificDetails() : null,
       );
+
+      // Navigate to dashboard after successful registration
+      if (mounted) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (context) => const DashboardScreen()),
+        );
+      }
 
       debugPrint('register call finished');
     } catch (e) {

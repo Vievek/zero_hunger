@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import '../widgets/custom_textfield.dart';
-import '../widgets/custom_button.dart';
 import 'dashboard_screen.dart';
-import 'profile_completion_screen.dart'; // Add this import
+import 'profile_completion_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -33,11 +31,7 @@ class _LoginScreenState extends State<LoginScreen> {
         _saveLoginInfo,
       );
 
-      if (!_saveLoginInfo) {
-        _showSaveLoginDialog();
-      } else {
-        _navigateToDashboard();
-      }
+      _navigateAfterAuth();
     } catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -50,49 +44,21 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
-  void _showSaveLoginDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Save Login Info?'),
-        content: const Text(
-          'Do you want to save your login information for faster access next time?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _navigateToDashboard();
-            },
-            child: const Text('No Thanks'),
-          ),
-          TextButton(
-            onPressed: () {
-              setState(() {
-                _saveLoginInfo = true;
-              });
-              Navigator.pop(context);
-              _navigateToDashboard();
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
+  void _navigateAfterAuth() {
+    final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
-  void _navigateToDashboard() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const DashboardScreen()),
-    );
-  }
-
-  void _navigateToProfileCompletion() {
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(builder: (context) => const ProfileCompletionScreen()),
-    );
+    if (authProvider.needsProfileCompletion) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+            builder: (context) => const ProfileCompletionScreen()),
+      );
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => const DashboardScreen()),
+      );
+    }
   }
 
   Future<void> _googleSignIn() async {
@@ -100,12 +66,8 @@ class _LoginScreenState extends State<LoginScreen> {
       final authProvider = Provider.of<AuthProvider>(context, listen: false);
       await authProvider.googleSignIn(_saveLoginInfo);
 
-      if (authProvider.user?.profileCompleted == false) {
-        if (mounted) {
-          _navigateToProfileCompletion();
-        }
-      } else {
-        _navigateToDashboard();
+      if (mounted) {
+        _navigateAfterAuth();
       }
     } catch (error) {
       if (mounted) {
@@ -152,11 +114,13 @@ class _LoginScreenState extends State<LoginScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
-
-              CustomTextField(
+              TextFormField(
                 controller: _emailController,
-                label: 'Email Address',
-                icon: Icons.email,
+                decoration: const InputDecoration(
+                  labelText: 'Email Address',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.email),
+                ),
                 validator: (value) {
                   if (value?.isEmpty ?? true) {
                     return 'Please enter your email';
@@ -168,19 +132,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
               ),
               const SizedBox(height: 20),
-
-              CustomTextField(
+              TextFormField(
                 controller: _passwordController,
-                label: 'Password',
-                icon: Icons.lock,
-                obscureText: _obscurePassword,
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscurePassword ? Icons.visibility : Icons.visibility_off,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.lock),
+                  suffixIcon: IconButton(
+                    icon: Icon(
+                      _obscurePassword
+                          ? Icons.visibility
+                          : Icons.visibility_off,
+                    ),
+                    onPressed: () =>
+                        setState(() => _obscurePassword = !_obscurePassword),
                   ),
-                  onPressed: () =>
-                      setState(() => _obscurePassword = !_obscurePassword),
                 ),
+                obscureText: _obscurePassword,
                 validator: (value) {
                   if (value?.isEmpty ?? true) {
                     return 'Please enter your password';
@@ -192,7 +160,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 },
               ),
               const SizedBox(height: 20),
-
               Row(
                 children: [
                   Checkbox(
@@ -211,14 +178,21 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-
-              CustomButton(
-                text: 'Sign In',
-                onPressed: _login,
-                isLoading: authProvider.isLoading,
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child: ElevatedButton(
+                  onPressed: authProvider.isLoading ? null : _login,
+                  child: authProvider.isLoading
+                      ? const SizedBox(
+                          height: 20,
+                          width: 20,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Sign In', style: TextStyle(fontSize: 16)),
+                ),
               ),
               const SizedBox(height: 20),
-
               const Row(
                 children: [
                   Expanded(child: Divider()),
@@ -230,7 +204,6 @@ class _LoginScreenState extends State<LoginScreen> {
                 ],
               ),
               const SizedBox(height: 20),
-
               OutlinedButton.icon(
                 onPressed: authProvider.isLoading ? null : _googleSignIn,
                 icon: Image.asset(

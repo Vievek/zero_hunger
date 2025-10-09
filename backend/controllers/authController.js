@@ -11,7 +11,17 @@ const generateToken = (userId) => {
 // Register User
 exports.register = async (req, res) => {
   try {
-    const { name, email, password, role, phone, address } = req.body;
+    const {
+      name,
+      email,
+      password,
+      role,
+      phone,
+      address,
+      donorDetails,
+      recipientDetails,
+      volunteerDetails,
+    } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -28,9 +38,14 @@ exports.register = async (req, res) => {
       email,
       password,
       role,
-      phone,
-      address,
+      contactInfo: {
+        phone,
+        address,
+      },
       profileCompleted: true,
+      donorDetails: role === "donor" ? donorDetails : undefined,
+      recipientDetails: role === "recipient" ? recipientDetails : undefined,
+      volunteerDetails: role === "volunteer" ? volunteerDetails : undefined,
     });
 
     await user.save();
@@ -46,9 +61,12 @@ exports.register = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        phone: user.phone,
-        address: user.address,
+        phone: user.contactInfo.phone,
+        address: user.contactInfo.address,
         profileCompleted: user.profileCompleted,
+        donorDetails: user.donorDetails,
+        recipientDetails: user.recipientDetails,
+        volunteerDetails: user.volunteerDetails,
       },
     });
   } catch (error) {
@@ -83,7 +101,7 @@ exports.login = async (req, res) => {
     }
 
     // Check password
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await user.correctPassword(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
@@ -102,9 +120,12 @@ exports.login = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        phone: user.phone,
-        address: user.address,
+        phone: user.contactInfo.phone,
+        address: user.contactInfo.address,
         profileCompleted: user.profileCompleted,
+        donorDetails: user.donorDetails,
+        recipientDetails: user.recipientDetails,
+        volunteerDetails: user.volunteerDetails,
       },
     });
   } catch (error) {
@@ -119,9 +140,21 @@ exports.login = async (req, res) => {
 // Get Current User
 exports.getMe = async (req, res) => {
   try {
+    const user = await User.findById(req.user.id);
     res.json({
       success: true,
-      user: req.user,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.contactInfo.phone,
+        address: user.contactInfo.address,
+        profileCompleted: user.profileCompleted,
+        donorDetails: user.donorDetails,
+        recipientDetails: user.recipientDetails,
+        volunteerDetails: user.volunteerDetails,
+      },
     });
   } catch (error) {
     res.status(500).json({
@@ -135,19 +168,37 @@ exports.getMe = async (req, res) => {
 // Complete Profile (for Google sign-in users)
 exports.completeProfile = async (req, res) => {
   try {
-    const { role, phone, address } = req.body;
+    const {
+      role,
+      phone,
+      address,
+      donorDetails,
+      recipientDetails,
+      volunteerDetails,
+    } = req.body;
     const userId = req.user.id;
 
-    const user = await User.findByIdAndUpdate(
-      userId,
-      {
-        role,
+    const updateData = {
+      role,
+      contactInfo: {
         phone,
         address,
-        profileCompleted: true,
       },
-      { new: true }
-    );
+      profileCompleted: true,
+    };
+
+    // Add role-specific details
+    if (role === "donor" && donorDetails) {
+      updateData.donorDetails = donorDetails;
+    } else if (role === "recipient" && recipientDetails) {
+      updateData.recipientDetails = recipientDetails;
+    } else if (role === "volunteer" && volunteerDetails) {
+      updateData.volunteerDetails = volunteerDetails;
+    }
+
+    const user = await User.findByIdAndUpdate(userId, updateData, {
+      new: true,
+    });
 
     res.json({
       success: true,
@@ -156,9 +207,12 @@ exports.completeProfile = async (req, res) => {
         name: user.name,
         email: user.email,
         role: user.role,
-        phone: user.phone,
-        address: user.address,
+        phone: user.contactInfo.phone,
+        address: user.contactInfo.address,
         profileCompleted: user.profileCompleted,
+        donorDetails: user.donorDetails,
+        recipientDetails: user.recipientDetails,
+        volunteerDetails: user.volunteerDetails,
       },
     });
   } catch (error) {
