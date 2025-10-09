@@ -13,8 +13,6 @@ const options = {
   serverSelectionTimeoutMS: 5000,
   socketTimeoutMS: 45000,
   connectTimeoutMS: 10000,
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
 };
 
 async function connectDB() {
@@ -22,11 +20,17 @@ async function connectDB() {
     return cached.conn;
   }
   if (!cached.promise) {
+    console.log("Connecting to MongoDB...");
     cached.promise = mongoose
       .connect(process.env.MONGODB_URI, options)
       .then((mongoose) => {
         console.log("MongoDB connected");
         return mongoose;
+      })
+      .catch((error) => {
+        console.error("MongoDB connection error:", error);
+        cached.promise = null; // reset promise for retry
+        throw error;
       });
   }
   cached.conn = await cached.promise;
