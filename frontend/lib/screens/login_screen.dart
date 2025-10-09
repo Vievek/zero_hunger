@@ -84,7 +84,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
-
+    debugPrint('in login screen, isLoading: ${authProvider.isLoading}');
     return Scaffold(
       appBar: AppBar(
         title: const Text('Login'),

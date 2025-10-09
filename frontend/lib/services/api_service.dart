@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 
@@ -11,7 +12,8 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'email': email, 'password': password}),
     );
-
+    debugPrint(response.body);
+    debugPrint('Status code: ${response.statusCode}');
     if (response.statusCode == 200) {
       final jsonResponse = json.decode(response.body);
       return AuthResponse.fromJson(jsonResponse);
@@ -49,6 +51,8 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: json.encode(requestBody),
     );
+    debugPrint(response.body);
+    debugPrint('Status code: ${response.statusCode}');
 
     if (response.statusCode == 201) {
       final jsonResponse = json.decode(response.body);
@@ -64,7 +68,8 @@ class ApiService {
       Uri.parse('$baseUrl/auth/me'),
       headers: {'Authorization': 'Bearer $token'},
     );
-
+    debugPrint(response.body);
+    debugPrint('Status code: ${response.statusCode}');
     if (response.statusCode == 200) {
       final jsonResponse = json.decode(response.body);
       return User.fromJson(jsonResponse['user']);
@@ -99,6 +104,8 @@ class ApiService {
       },
       body: json.encode(requestBody),
     );
+    debugPrint(response.body);
+    debugPrint('Status code: ${response.statusCode}');
 
     if (response.statusCode == 200) {
       final jsonResponse = json.decode(response.body);
@@ -120,6 +127,8 @@ class ApiService {
         'email': email,
       }),
     );
+    debugPrint(response.body);
+    debugPrint('Status code: ${response.statusCode}');
 
     if (response.statusCode == 200 || response.statusCode == 201) {
       final jsonResponse = json.decode(response.body);
@@ -137,6 +146,7 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: json.encode(donationData),
     );
+   
     return _handleResponse(response);
   }
 
@@ -144,6 +154,7 @@ class ApiService {
     final response = await http.get(
       Uri.parse('$baseUrl/donations/my-donations'),
     );
+
     return _handleResponse(response);
   }
 
@@ -204,6 +215,8 @@ class ApiService {
   // Helper methods
   Future<dynamic> _handleResponse(http.Response response) async {
     final data = json.decode(response.body);
+    debugPrint(response.body);
+    debugPrint('Status code: ${response.statusCode}');
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
       return data;
@@ -216,6 +229,7 @@ class ApiService {
   Future<String> uploadImage(String imagePath) async {
     // Simplified implementation - you'll need to implement actual upload
     // For now, return a dummy URL
+    //TODO: implement image upload logic
     return 'https://example.com/uploaded-image.jpg';
   }
 
@@ -223,6 +237,8 @@ class ApiService {
   Future<bool> checkServerHealth() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/health'));
+       debugPrint(response.body);
+      debugPrint('Status code: ${response.statusCode}');
       return response.statusCode == 200;
     } catch (e) {
       return false;

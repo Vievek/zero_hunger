@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
 import 'create_donation_screen.dart';
+import '../providers/auth_provider.dart';
+import 'welcome_screen.dart';
 
 class DonorDashboardScreen extends StatefulWidget {
   const DonorDashboardScreen({super.key});
@@ -18,6 +20,34 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<DonationProvider>(context, listen: false).fetchMyDonations();
     });
+  }
+
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Provider.of<AuthProvider>(context, listen: false).logout();
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => WelcomeScreen()),
+                (route) => false,
+              );
+            },
+            child: const Text('Logout', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -38,6 +68,10 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
                 ),
               );
             },
+          ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _showLogoutDialog(context),
           ),
         ],
       ),

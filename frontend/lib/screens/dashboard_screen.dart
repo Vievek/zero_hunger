@@ -5,6 +5,7 @@ import 'donor_dashboard.dart';
 import 'recipient_dashboard_screen.dart';
 import 'volunteer_dashboard_screen.dart';
 import 'admin_dashboard_screen.dart';
+import 'welcome_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -68,6 +69,11 @@ class DashboardScreen extends StatelessWidget {
             onPressed: () {
               Navigator.pop(context);
               Provider.of<AuthProvider>(context, listen: false).logout();
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+                (route) => false,
+              );
             },
             child: const Text('Logout', style: TextStyle(color: Colors.red)),
           ),
