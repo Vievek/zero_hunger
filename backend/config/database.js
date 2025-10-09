@@ -10,9 +10,9 @@ const options = {
   bufferCommands: false,
   maxPoolSize: 5,
   minPoolSize: 1,
-  serverSelectionTimeoutMS: 5000,
+  serverSelectionTimeoutMS: 60000,
   socketTimeoutMS: 45000,
-  connectTimeoutMS: 10000,
+  connectTimeoutMS: 60000,
 };
 
 async function connectDB() {
