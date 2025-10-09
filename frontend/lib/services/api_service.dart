@@ -196,7 +196,7 @@ class ApiService {
     return _handleResponse(response);
   }
 
-  // FoodSafe AI methods
+// FoodSafe AI methods
   Future<dynamic> askFoodSafetyQuestion(
       String question, String foodType) async {
     final response = await http.post(
@@ -213,6 +213,15 @@ class ApiService {
       Uri.parse('$baseUrl/foodsafe/generate-label/$donationId'),
       headers: _getHeaders(),
       body: json.encode(data),
+    );
+    return _handleResponse(response);
+  }
+
+  Future<dynamic> getFoodSafetyChecklist(String foodType) async {
+    final response = await http.get(
+      Uri.parse(
+          '$baseUrl/foodsafe/checklist?foodType=${Uri.encodeComponent(foodType)}'),
+      headers: _getHeaders(),
     );
     return _handleResponse(response);
   }
