@@ -31,11 +31,36 @@ app.use("/admin", adminRoutes);
 
 // Health check endpoint
 app.get("/health", (req, res) => {
-  res.json({
-    success: true,
-    message: "Server is running",
-    timestamp: new Date().toISOString(),
-  });
+  try {
+    const connectionState = mongoose.connection.readyState;
+
+    const dbStatus = {
+      connected: connectionState === 1,
+      status: connectionState === 1 ? "connected" : "disconnected",
+      readyState: connectionState,
+    };
+
+    const overallStatus = connectionState === 1 ? "healthy" : "degraded";
+
+    res.json({
+      success: true,
+      status: overallStatus,
+      message:
+        overallStatus === "healthy"
+          ? "Server and database are running"
+          : "Server running but database disconnected",
+      timestamp: new Date().toISOString(),
+      database: dbStatus,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      status: "unhealthy",
+      message: "Health check failed",
+      timestamp: new Date().toISOString(),
+      error: error.message,
+    });
+  }
 });
 app.get("/", (req, res) => {
   res.json({ message: "API is running" });
