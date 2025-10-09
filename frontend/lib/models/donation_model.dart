@@ -9,6 +9,7 @@ class Donation {
   final List<String> tags;
   final Map<String, dynamic> quantity;
   final Map<String, dynamic>? handlingWindow;
+  final String? expectedQuantity; // For bulk donations
   final DateTime? scheduledPickup;
   final String pickupAddress;
   final Map<String, dynamic> location;
@@ -29,6 +30,7 @@ class Donation {
     required this.tags,
     required this.quantity,
     this.handlingWindow,
+    this.expectedQuantity,
     this.scheduledPickup,
     required this.pickupAddress,
     required this.location,
@@ -53,6 +55,7 @@ class Donation {
       handlingWindow: json['handlingWindow'] != null
           ? Map<String, dynamic>.from(json['handlingWindow'])
           : null,
+      expectedQuantity: json['expectedQuantity'],
       scheduledPickup: json['scheduledPickup'] != null
           ? DateTime.parse(json['scheduledPickup'])
           : null,
@@ -73,6 +76,7 @@ class Donation {
       'type': type,
       'images': images,
       'quantity': quantity,
+      'expectedQuantity': expectedQuantity,
       'scheduledPickup': scheduledPickup?.toIso8601String(),
       'pickupAddress': pickupAddress,
       'location': location,
@@ -85,8 +89,10 @@ class Donation {
   bool get isNormal => type == 'normal';
   bool get isBulk => type == 'bulk';
   bool get isPending => status == 'pending';
+  bool get isAiProcessing => status == 'ai_processing';
   bool get isActive => status == 'active';
   bool get isMatched => status == 'matched';
+  bool get isScheduled => status == 'scheduled';
   bool get isDelivered => status == 'delivered';
 
   String get statusText {
@@ -96,11 +102,11 @@ class Donation {
       case 'ai_processing':
         return 'AI Processing';
       case 'active':
-        return 'Active';
+        return 'Active - Seeking Recipients';
       case 'matched':
-        return 'Matched';
+        return 'Matched with Recipient';
       case 'scheduled':
-        return 'Scheduled';
+        return 'Scheduled for Pickup';
       case 'picked_up':
         return 'Picked Up';
       case 'delivered':
@@ -110,5 +116,35 @@ class Donation {
       default:
         return 'Unknown';
     }
+  }
+
+  // AI analysis helpers
+  String get displayDescription {
+    return aiDescription ?? 'Food Donation';
+  }
+
+  String get quantityText {
+    final amount = quantity['amount']?.toString() ?? '0';
+    final unit = quantity['unit']?.toString() ?? 'units';
+    return '$amount $unit';
+  }
+
+  bool get hasAiAnalysis => aiAnalysis != null;
+
+  double? get freshnessScore {
+    return aiAnalysis?['freshnessScore']?.toDouble();
+  }
+
+  List<String> get allergens {
+    return aiAnalysis?['allergens']?.cast<String>() ?? [];
+  }
+
+  List<String> get safetyWarnings {
+    return aiAnalysis?['safetyWarnings']?.cast<String>() ?? [];
+  }
+
+  String get suggestedHandling {
+    return aiAnalysis?['suggestedHandling'] ??
+        'Handle with standard food safety precautions';
   }
 }

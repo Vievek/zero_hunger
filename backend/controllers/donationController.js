@@ -8,18 +8,34 @@ const notificationService = require("../services/notificationService");
 
 exports.createDonation = async (req, res) => {
   try {
-    const { type, images, quantity, scheduledPickup, pickupAddress, location } =
-      req.body;
+    const {
+      type,
+      images,
+      quantity,
+      scheduledPickup,
+      pickupAddress,
+      location,
+      expectedQuantity,
+    } = req.body;
+
+    // Validate bulk donation requirements
+    if (type === "bulk" && !scheduledPickup) {
+      return res.status(400).json({
+        success: false,
+        message: "Scheduled pickup is required for bulk donations",
+      });
+    }
 
     const donation = new Donation({
       donor: req.user.id,
       type,
       images,
       quantity,
+      expectedQuantity: type === "bulk" ? expectedQuantity : undefined,
       scheduledPickup: type === "bulk" ? scheduledPickup : undefined,
       pickupAddress,
       location,
-      status: "ai_processing",
+      status: images && images.length > 0 ? "ai_processing" : "active",
     });
 
     await donation.save();
@@ -44,18 +60,32 @@ exports.createDonation = async (req, res) => {
         await donation.save();
 
         // Start matching process
-        initiateMatching(donation._id);
+        await initiateMatching(donation._id);
       } catch (aiError) {
         console.error("AI processing failed:", aiError);
-        donation.status = "active"; // Continue without AI data
+        donation.status = "active";
+        donation.aiDescription = "AI analysis failed - manual review needed";
         await donation.save();
+
+        // Start matching even if AI fails
+        await initiateMatching(donation._id);
       }
+    } else {
+      // No images - start matching immediately
+      await initiateMatching(donation._id);
     }
+
+    // Populate the response with donation data
+    const populatedDonation = await Donation.findById(donation._id)
+      .populate("donor", "name email")
+      .populate("matchedRecipients.recipient", "name recipientDetails");
 
     res.status(201).json({
       success: true,
-      data: donation,
-      message: "Donation created successfully",
+      data: populatedDonation,
+      message:
+        "Donation created successfully" +
+        (images && images.length > 0 ? " - AI processing started" : ""),
     });
   } catch (error) {
     res.status(500).json({
@@ -65,27 +95,40 @@ exports.createDonation = async (req, res) => {
   }
 };
 
+// Helper function to calculate handling window
+function calculateHandlingWindow(freshnessScore) {
+  const now = new Date();
+  // Convert freshness score (0-1) to hours (4-24 hours)
+  const hours = 4 + freshnessScore * 20;
+  return {
+    start: now,
+    end: new Date(now.getTime() + hours * 60 * 60 * 1000),
+  };
+}
+
 // Helper function to initiate matching
 async function initiateMatching(donationId) {
   try {
     const matches = await matchingService.findBestMatches(donationId);
     const donation = await Donation.findById(donationId);
 
-    // Update donation with matches
-    donation.matchedRecipients = matches.map((match) => ({
-      recipient: match.recipient,
-      matchScore: match.totalScore,
-    }));
+    if (matches && matches.length > 0) {
+      donation.matchedRecipients = matches.map((match) => ({
+        recipient: match.recipient,
+        matchScore: match.totalScore,
+        status: "offered",
+      }));
 
-    await donation.save();
+      await donation.save();
 
-    // Send notifications to matched recipients
-    for (const match of matches) {
-      await notificationService.sendDonationOffer(
-        match.recipient,
-        donationId,
-        match.matchScore
-      );
+      // Send notifications to matched recipients
+      for (const match of matches) {
+        await notificationService.sendDonationOffer(
+          match.recipient,
+          donationId,
+          match.matchScore
+        );
+      }
     }
   } catch (error) {
     console.error("Matching process error:", error);
@@ -104,18 +147,23 @@ exports.acceptDonation = async (req, res) => {
       });
     }
 
-    // Update donation status
-    donation.acceptedBy = req.user.id;
-    donation.status = "matched";
-
-    // Update the specific recipient's status
+    // Check if user is in matched recipients
     const recipientMatch = donation.matchedRecipients.find(
       (match) => match.recipient.toString() === req.user.id
     );
-    if (recipientMatch) {
-      recipientMatch.status = "accepted";
-      recipientMatch.respondedAt = new Date();
+
+    if (!recipientMatch) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to accept this donation",
+      });
     }
+
+    // Update donation status
+    donation.acceptedBy = req.user.id;
+    donation.status = "matched";
+    recipientMatch.status = "accepted";
+    recipientMatch.respondedAt = new Date();
 
     await donation.save();
 
@@ -131,24 +179,30 @@ exports.acceptDonation = async (req, res) => {
         lng: donation.location.lng,
       },
       dropoffLocation: {
-        address: recipient.recipientDetails?.address || recipient.address,
-        lat: recipient.recipientDetails?.location?.lat || 0,
-        lng: recipient.recipientDetails?.location?.lng || 0,
+        address:
+          recipient.recipientDetails?.address || recipient.contactInfo?.address,
+        lat: recipient.recipientDetails?.location?.lat || donation.location.lat,
+        lng: recipient.recipientDetails?.location?.lng || donation.location.lng,
       },
       scheduledPickupTime:
         donation.type === "bulk"
           ? donation.scheduledPickup
           : new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+      status: "pending",
     });
 
     await task.save();
 
-    // Assign volunteer using GA
+    // Assign volunteer
     await assignVolunteerToTask(task._id);
+
+    const populatedDonation = await Donation.findById(donationId)
+      .populate("acceptedBy", "name recipientDetails")
+      .populate("assignedVolunteer", "name");
 
     res.json({
       success: true,
-      data: { donation, task },
+      data: { donation: populatedDonation, task },
       message: "Donation accepted successfully",
     });
   } catch (error) {
@@ -173,60 +227,23 @@ async function assignVolunteerToTask(taskId) {
       return;
     }
 
-    // Get all pending tasks for route optimization
-    const pendingTasks = await LogisticsTask.find({
-      status: "pending",
-      volunteer: { $exists: false },
-    }).populate("donation");
+    // Simple volunteer assignment (first available)
+    // In production, you'd use the GA optimization here
+    const assignedVolunteer = availableVolunteers[0];
 
-    // Use GA to assign volunteers (simplified for demo)
-    const assignment = await routeOptimizationService.assignVolunteerWithGA(
-      [task, ...pendingTasks],
-      availableVolunteers
-    );
-
-    // Update task with assigned volunteer
-    task.volunteer = assignment[task._id];
+    task.volunteer = assignedVolunteer._id;
     task.status = "assigned";
     await task.save();
 
-    // Send notification to volunteer
-    await notificationService.sendTaskAssignment(assignment[task._id], taskId);
-
-    // Optimize route if volunteer has multiple tasks
-    await optimizeVolunteerRoute(assignment[task._id]);
-  } catch (error) {
-    console.error("Volunteer assignment error:", error);
-  }
-}
-
-// Helper function to optimize volunteer route
-async function optimizeVolunteerRoute(volunteerId) {
-  try {
-    const tasks = await LogisticsTask.find({
-      volunteer: volunteerId,
-      status: { $in: ["assigned", "picked_up"] },
-    }).populate("donation");
-
-    if (tasks.length <= 1) return;
-
-    const waypoints = tasks.flatMap((task) => [
-      task.pickupLocation,
-      task.dropoffLocation,
-    ]);
-
-    const optimizedRoute =
-      await routeOptimizationService.optimizeMultiStopRoute(waypoints);
-
-    // Update tasks with optimized sequence
-    tasks.forEach((task, index) => {
-      task.routeSequence = index;
-      task.optimizedRoute = optimizedRoute;
+    // Update donation with assigned volunteer
+    await Donation.findByIdAndUpdate(task.donation._id, {
+      assignedVolunteer: assignedVolunteer._id,
     });
 
-    await Promise.all(tasks.map((task) => task.save()));
+    // Send notification to volunteer
+    await notificationService.sendTaskAssignment(assignedVolunteer._id, taskId);
   } catch (error) {
-    console.error("Route optimization error:", error);
+    console.error("Volunteer assignment error:", error);
   }
 }
 
@@ -239,10 +256,10 @@ exports.getDonorDashboard = async (req, res) => {
 
     const stats = {
       total: donations.length,
-      active: donations.filter((d) => ["active", "matched"].includes(d.status))
-        .length,
-      completed: donations.filter((d) => ["delivered"].includes(d.status))
-        .length,
+      active: donations.filter((d) =>
+        ["active", "matched", "scheduled"].includes(d.status)
+      ).length,
+      completed: donations.filter((d) => d.status === "delivered").length,
       pending: donations.filter((d) =>
         ["pending", "ai_processing"].includes(d.status)
       ).length,
@@ -260,13 +277,45 @@ exports.getDonorDashboard = async (req, res) => {
   }
 };
 
-// Helper function to calculate handling window
-function calculateHandlingWindow(freshnessScore) {
-  const now = new Date();
-  const hours = freshnessScore * 24; // Scale to 24 hours max
+exports.getDonationDetails = async (req, res) => {
+  try {
+    const { donationId } = req.params;
 
-  return {
-    start: now,
-    end: new Date(now.getTime() + hours * 60 * 60 * 1000),
-  };
-}
+    const donation = await Donation.findById(donationId)
+      .populate("donor", "name contactInfo")
+      .populate("acceptedBy", "name recipientDetails")
+      .populate("assignedVolunteer", "name volunteerDetails")
+      .populate("matchedRecipients.recipient", "name recipientDetails");
+
+    if (!donation) {
+      return res.status(404).json({
+        success: false,
+        message: "Donation not found",
+      });
+    }
+
+    // Check if user is authorized to view this donation
+    if (
+      donation.donor._id.toString() !== req.user.id &&
+      donation.acceptedBy?._id.toString() !== req.user.id &&
+      !donation.matchedRecipients.some(
+        (match) => match.recipient._id.toString() === req.user.id
+      )
+    ) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to view this donation",
+      });
+    }
+
+    res.json({
+      success: true,
+      data: donation,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};

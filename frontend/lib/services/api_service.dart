@@ -5,6 +5,21 @@ import '../models/user_model.dart';
 
 class ApiService {
   static const String baseUrl = 'https://zero-hunger-three.vercel.app';
+  String? _authToken;
+
+  // Set authentication token
+  void setAuthToken(String token) {
+    _authToken = token;
+  }
+
+  // Get headers with auth
+  Map<String, String> _getHeaders() {
+    final headers = {'Content-Type': 'application/json'};
+    if (_authToken != null) {
+      headers['Authorization'] = 'Bearer $_authToken';
+    }
+    return headers;
+  }
 
   Future<AuthResponse> login(String email, String password) async {
     final response = await http.post(
@@ -12,8 +27,10 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: json.encode({'email': email, 'password': password}),
     );
-    debugPrint(response.body);
+
+    debugPrint('Login response: ${response.body}');
     debugPrint('Status code: ${response.statusCode}');
+
     if (response.statusCode == 200) {
       final jsonResponse = json.decode(response.body);
       return AuthResponse.fromJson(jsonResponse);
@@ -51,7 +68,8 @@ class ApiService {
       headers: {'Content-Type': 'application/json'},
       body: json.encode(requestBody),
     );
-    debugPrint(response.body);
+
+    debugPrint('Register response: ${response.body}');
     debugPrint('Status code: ${response.statusCode}');
 
     if (response.statusCode == 201) {
@@ -68,8 +86,10 @@ class ApiService {
       Uri.parse('$baseUrl/auth/me'),
       headers: {'Authorization': 'Bearer $token'},
     );
-    debugPrint(response.body);
+
+    debugPrint('Get user response: ${response.body}');
     debugPrint('Status code: ${response.statusCode}');
+
     if (response.statusCode == 200) {
       final jsonResponse = json.decode(response.body);
       return User.fromJson(jsonResponse['user']);
@@ -115,7 +135,7 @@ class ApiService {
     }
   }
 
-  // Google authentication
+  // Google authentication - ADDED BACK
   Future<AuthResponse> googleAuth(
       String googleId, String name, String email) async {
     final response = await http.post(
@@ -143,16 +163,26 @@ class ApiService {
   Future<dynamic> createDonation(Map<String, dynamic> donationData) async {
     final response = await http.post(
       Uri.parse('$baseUrl/donations'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _getHeaders(),
       body: json.encode(donationData),
     );
-   
+
     return _handleResponse(response);
   }
 
   Future<dynamic> getMyDonations() async {
     final response = await http.get(
       Uri.parse('$baseUrl/donations/my-donations'),
+      headers: _getHeaders(),
+    );
+
+    return _handleResponse(response);
+  }
+
+  Future<dynamic> getDonationDetails(String donationId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/donations/$donationId'),
+      headers: _getHeaders(),
     );
 
     return _handleResponse(response);
@@ -161,45 +191,45 @@ class ApiService {
   Future<dynamic> acceptDonation(String donationId) async {
     final response = await http.post(
       Uri.parse('$baseUrl/donations/$donationId/accept'),
+      headers: _getHeaders(),
     );
     return _handleResponse(response);
   }
 
   // FoodSafe AI methods
   Future<dynamic> askFoodSafetyQuestion(
-    String question,
-    String foodType,
-  ) async {
+      String question, String foodType) async {
     final response = await http.post(
       Uri.parse('$baseUrl/foodsafe/ask'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _getHeaders(),
       body: json.encode({'question': question, 'foodType': foodType}),
     );
     return _handleResponse(response);
   }
 
   Future<dynamic> generateFoodLabel(
-    String donationId,
-    Map<String, dynamic> data,
-  ) async {
+      String donationId, Map<String, dynamic> data) async {
     final response = await http.post(
       Uri.parse('$baseUrl/foodsafe/generate-label/$donationId'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _getHeaders(),
       body: json.encode(data),
     );
     return _handleResponse(response);
   }
 
-  // Logistics methods
+  // Logistics methods - ADDED BACK
   Future<dynamic> getMyTasks() async {
-    final response = await http.get(Uri.parse('$baseUrl/logistics/my-tasks'));
+    final response = await http.get(
+      Uri.parse('$baseUrl/logistics/my-tasks'),
+      headers: _getHeaders(),
+    );
     return _handleResponse(response);
   }
 
   Future<dynamic> updateTaskStatus(String taskId, String status) async {
     final response = await http.put(
       Uri.parse('$baseUrl/logistics/$taskId/status'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _getHeaders(),
       body: json.encode({'status': status}),
     );
     return _handleResponse(response);
@@ -208,14 +238,49 @@ class ApiService {
   Future<dynamic> getOptimizedRoute(String taskId) async {
     final response = await http.get(
       Uri.parse('$baseUrl/logistics/$taskId/route'),
+      headers: _getHeaders(),
     );
     return _handleResponse(response);
+  }
+
+  // Image upload - SIMPLIFIED VERSION
+  Future<String> uploadImage(String imagePath) async {
+    // For now, return a placeholder URL
+    // In production, implement actual multipart upload
+    debugPrint('Image upload requested for: $imagePath');
+    return 'https://example.com/uploaded-image.jpg';
+  }
+
+  // Upload multiple images
+  Future<List<String>> uploadImages(List<String> imagePaths) async {
+    try {
+      List<String> uploadedUrls = [];
+
+      for (String path in imagePaths) {
+        try {
+          final url = await uploadImage(path);
+          uploadedUrls.add(url);
+        } catch (e) {
+          debugPrint('Failed to upload image $path: $e');
+          // Continue with other images even if one fails
+        }
+      }
+
+      if (uploadedUrls.isEmpty) {
+        throw Exception('All image uploads failed');
+      }
+
+      return uploadedUrls;
+    } catch (e) {
+      debugPrint('Batch image upload error: $e');
+      rethrow;
+    }
   }
 
   // Helper methods
   Future<dynamic> _handleResponse(http.Response response) async {
     final data = json.decode(response.body);
-    debugPrint(response.body);
+    debugPrint('API Response: ${response.body}');
     debugPrint('Status code: ${response.statusCode}');
 
     if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -225,22 +290,14 @@ class ApiService {
     }
   }
 
-  // Image upload
-  Future<String> uploadImage(String imagePath) async {
-    // Simplified implementation - you'll need to implement actual upload
-    // For now, return a dummy URL
-    //TODO: implement image upload logic
-    return 'https://example.com/uploaded-image.jpg';
-  }
-
   // Health check
   Future<bool> checkServerHealth() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/health'));
-       debugPrint(response.body);
-      debugPrint('Status code: ${response.statusCode}');
+      debugPrint('Health check: ${response.statusCode}');
       return response.statusCode == 200;
     } catch (e) {
+      debugPrint('Health check error: $e');
       return false;
     }
   }
