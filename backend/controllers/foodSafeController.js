@@ -38,10 +38,10 @@ exports.askFoodSafetyQuestion = async (req, res) => {
 
     console.log(`FoodSafe AI Question: ${foodType} - ${question}`);
 
+    // FIXED: Remove the third parameter
     const response = await geminiService.generateFoodSafetyInfo(
       foodType,
-      question,
-      FOOD_SAFETY_KNOWLEDGE_BASE
+      question
     );
 
     // Add curated sources to response

@@ -167,7 +167,7 @@ class GeminiAIService {
     }
   }
 
-  // ENHANCED: Generate food safety information with authority references
+  // FIXED: Generate food safety information with authority references (only 2 parameters)
   async generateFoodSafetyInfo(foodType, question) {
     try {
       const prompt = `
