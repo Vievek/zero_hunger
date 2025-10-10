@@ -17,14 +17,29 @@ const userSchema = new mongoose.Schema(
     // Role-specific fields
     donorDetails: {
       businessName: String,
-      businessAddress: String,
       businessType: String,
+      businessAddress: String,
+      foodTypes: [String], // Types of food typically donated
       registrationNumber: String,
     },
     recipientDetails: {
       organizationName: String,
+      organizationType: {
+        type: String,
+        enum: [
+          "shelter",
+          "community_kitchen",
+          "food_bank",
+          "religious",
+          "other",
+        ],
+      },
       address: String,
-      capacity: Number,
+      location: {
+        lat: Number,
+        lng: Number,
+      },
+      capacity: { type: Number, default: 50 }, // People served per day
       dietaryRestrictions: [String],
       verificationStatus: {
         type: String,
@@ -33,11 +48,16 @@ const userSchema = new mongoose.Schema(
       },
       verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
       verificationNotes: String,
+      operatingHours: {
+        start: String,
+        end: String,
+      },
     },
     volunteerDetails: {
       vehicleType: {
         type: String,
         enum: ["bike", "car", "van", "truck", "none"],
+        default: "none",
       },
       contactNumber: String,
       availability: [
@@ -52,11 +72,17 @@ const userSchema = new mongoose.Schema(
         lng: Number,
       },
       isAvailable: { type: Boolean, default: true },
+      maxDistance: { type: Number, default: 20 }, // km
+      capacity: { type: Number, default: 10 }, // kg or items
     },
 
     contactInfo: {
       phone: String,
       address: String,
+      location: {
+        lat: Number,
+        lng: Number,
+      },
     },
   },
   { timestamps: true }

@@ -1,8 +1,11 @@
 const User = require("../models/User");
 const Donation = require("../models/Donation");
 
-exports.getPendingVerifications = async (req, res) => {
+// Controller functions
+const getPendingVerifications = async (req, res) => {
   try {
+    console.log("Fetching pending verifications");
+
     const pendingRecipients = await User.find({
       role: "recipient",
       "recipientDetails.verificationStatus": "pending",
@@ -13,6 +16,7 @@ exports.getPendingVerifications = async (req, res) => {
       data: pendingRecipients,
     });
   } catch (error) {
+    console.error("Get pending verifications error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -20,10 +24,12 @@ exports.getPendingVerifications = async (req, res) => {
   }
 };
 
-exports.verifyRecipient = async (req, res) => {
+const verifyRecipient = async (req, res) => {
   try {
     const { userId } = req.params;
     const { status, notes } = req.body;
+
+    console.log(`Verifying recipient ${userId} with status: ${status}`);
 
     const user = await User.findById(userId);
     if (!user || user.role !== "recipient") {
@@ -45,6 +51,7 @@ exports.verifyRecipient = async (req, res) => {
       message: `Recipient ${status} successfully`,
     });
   } catch (error) {
+    console.error("Verify recipient error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -52,8 +59,10 @@ exports.verifyRecipient = async (req, res) => {
   }
 };
 
-exports.getPlatformStats = async (req, res) => {
+const getPlatformStats = async (req, res) => {
   try {
+    console.log("Fetching platform statistics");
+
     const totalUsers = await User.countDocuments();
     const totalDonations = await Donation.countDocuments();
     const completedDonations = await Donation.countDocuments({
@@ -93,9 +102,17 @@ exports.getPlatformStats = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Get platform stats error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
     });
   }
+};
+
+// Export functions properly
+module.exports = {
+  getPendingVerifications,
+  verifyRecipient,
+  getPlatformStats,
 };

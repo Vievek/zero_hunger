@@ -30,26 +30,28 @@ class AuthProvider with ChangeNotifier {
       final authData = await _storageService.getAuthData();
       if (authData != null) {
         _token = authData['token'];
-         debugPrint('🔄 LOGIN SUCCESS - Token received: $_token');
-        debugPrint('🔄 Token length: ${_token?.length}');
+        debugPrint(
+            '🔄 AUTO LOGIN - Token found: ${_token?.substring(0, 10)}...');
 
-        // ✅ Set the token in ApiService
+        // ✅ Set the token in ApiService singleton
         if (_token != null) {
-          debugPrint('🔄 Calling _apiService.setAuthToken()');
           _apiService.setAuthToken(_token!);
-
-          // ✅ VERIFY it was set
-          debugPrint('🔄 Verifying token was set in ApiService...');
-        } else {
-          debugPrint('🔄 ❌ CRITICAL: _token is NULL after login!');
+          debugPrint('🔄 Token set in ApiService singleton');
         }
-        // Verify token by getting user data
-        final user = await _apiService.getCurrentUser(_token!);
-        _user = user;
-        _isAuthenticated = true;
 
-        if (kDebugMode) {
-          print('Auto login successful: ${user.name}');
+        // Verify token by getting user data
+        try {
+          final user = await _apiService.getCurrentUser();
+          _user = user;
+          _isAuthenticated = true;
+
+          if (kDebugMode) {
+            print('Auto login successful: ${user.name}');
+          }
+        } catch (userError) {
+          debugPrint('Auto login user fetch failed: $userError');
+          await _storageService.clearAuthData();
+          _resetAuthState();
         }
       }
     } catch (error) {
@@ -57,6 +59,7 @@ class AuthProvider with ChangeNotifier {
         print('Auto login failed: $error');
       }
       await _storageService.clearAuthData();
+      _resetAuthState();
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -75,18 +78,13 @@ class AuthProvider with ChangeNotifier {
       _token = authResponse.token;
       _isAuthenticated = true;
 
-      debugPrint('🔄 LOGIN SUCCESS - Token received: $_token');
+      debugPrint('🔄 LOGIN SUCCESS - Token: ${_token?.substring(0, 10)}...');
       debugPrint('🔄 Token length: ${_token?.length}');
 
-      // ✅ Set the token in ApiService
+      // ✅ Set the token in ApiService singleton
       if (_token != null) {
-        debugPrint('🔄 Calling _apiService.setAuthToken()');
         _apiService.setAuthToken(_token!);
-
-        // ✅ VERIFY it was set
-        debugPrint('🔄 Verifying token was set in ApiService...');
-      } else {
-        debugPrint('🔄 ❌ CRITICAL: _token is NULL after login!');
+        debugPrint('🔄 Token propagated to ApiService singleton');
       }
 
       if (saveLogin) {
@@ -95,6 +93,7 @@ class AuthProvider with ChangeNotifier {
           _user!.toJson().toString(),
           saveLogin,
         );
+        debugPrint('🔄 Auth data saved to storage');
       }
 
       _isLoading = false;
@@ -136,22 +135,20 @@ class AuthProvider with ChangeNotifier {
         recipientDetails: recipientDetails,
         volunteerDetails: volunteerDetails,
       );
+
       _user = authResponse.user;
       _token = authResponse.token;
       _isAuthenticated = true;
-      debugPrint('🔄 REGISTER SUCCESS - Token received: $_token');
+
+      debugPrint('🔄 REGISTER SUCCESS - Token: ${_token?.substring(0, 10)}...');
       debugPrint('🔄 Token length: ${_token?.length}');
 
-      // ✅ Set the token in ApiService
+      // ✅ Set the token in ApiService singleton
       if (_token != null) {
-        debugPrint('🔄 Calling _apiService.setAuthToken()');
         _apiService.setAuthToken(_token!);
-
-        // ✅ VERIFY it was set
-        debugPrint('🔄 Verifying token was set in ApiService...');
-      } else {
-        debugPrint('🔄 ❌ CRITICAL: _token is NULL after login!');
+        debugPrint('🔄 Token propagated to ApiService singleton');
       }
+
       if (saveLogin) {
         await _storageService.saveAuthData(
           _token!,
@@ -192,18 +189,14 @@ class AuthProvider with ChangeNotifier {
       _user = authResponse.user;
       _token = authResponse.token;
       _isAuthenticated = true;
-      debugPrint('🔄 LOGIN SUCCESS - Token received: $_token');
-      debugPrint('🔄 Token length: ${_token?.length}');
 
-      // ✅ Set the token in ApiService
+      debugPrint(
+          '🔄 GOOGLE SIGNIN SUCCESS - Token: ${_token?.substring(0, 10)}...');
+
+      // ✅ Set the token in ApiService singleton
       if (_token != null) {
-        debugPrint('🔄 Calling _apiService.setAuthToken()');
         _apiService.setAuthToken(_token!);
-
-        // ✅ VERIFY it was set
-        debugPrint('🔄 Verifying token was set in ApiService...');
-      } else {
-        debugPrint('🔄 ❌ CRITICAL: _token is NULL after login!');
+        debugPrint('🔄 Token propagated to ApiService singleton');
       }
 
       if (saveLogin) {
@@ -273,31 +266,40 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Logout
-  Future<void> logout() async {
-    try {
-      await _googleAuthService.signOut();
-      await _storageService.clearAuthData();
-    } catch (error) {
-      if (kDebugMode) {
-        print('Logout error: $error');
-      }
-    } finally {
-      _user = null;
-      _token = null;
-      _isAuthenticated = false;
-      _error = null;
-      notifyListeners();
-    }
-  }
-
   // Update user profile
-  Future<void> updateProfile(String name, String phone, String address) async {
+  Future<void> updateProfile({
+    String? name,
+    String? phone,
+    String? address,
+    Map<String, dynamic>? donorDetails,
+    Map<String, dynamic>? recipientDetails,
+    Map<String, dynamic>? volunteerDetails,
+  }) async {
     _isLoading = true;
     notifyListeners();
 
     try {
-      _user = _user!.copyWith(name: name, phone: phone, address: address);
+      final updatedUser = await _apiService.updateProfile(
+        name: name,
+        phone: phone,
+        address: address,
+        donorDetails: donorDetails,
+        recipientDetails: recipientDetails,
+        volunteerDetails: volunteerDetails,
+      );
+
+      _user = updatedUser;
+
+      // Update stored user data
+      final authData = await _storageService.getAuthData();
+      if (authData != null) {
+        await _storageService.saveAuthData(
+          _token!,
+          _user!.toJson().toString(),
+          true,
+        );
+      }
+
       _isLoading = false;
       notifyListeners();
     } catch (error) {
@@ -308,7 +310,68 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Clear error
+  // Logout
+  Future<void> logout() async {
+    try {
+      await _googleAuthService.signOut();
+      await _storageService.clearAuthData();
+      await _apiService.clearAuthToken();
+    } catch (error) {
+      if (kDebugMode) {
+        print('Logout error: $error');
+      }
+    } finally {
+      _resetAuthState();
+      notifyListeners();
+    }
+  }
+
+  // Refresh user data
+  Future<void> refreshUserData() async {
+    try {
+      if (_token == null) return;
+
+      final user = await _apiService.getCurrentUser();
+      _user = user;
+      notifyListeners();
+
+      // Update stored user data
+      final authData = await _storageService.getAuthData();
+      if (authData != null) {
+        await _storageService.saveAuthData(
+          _token!,
+          _user!.toJson().toString(),
+          true,
+        );
+      }
+    } catch (error) {
+      debugPrint('Failed to refresh user data: $error');
+      // Don't throw error - this shouldn't break the app
+    }
+  }
+
+  // Check token validity
+  Future<bool> checkTokenValidity() async {
+    try {
+      if (_token == null) return false;
+
+      await _apiService.getCurrentUser();
+      return true;
+    } catch (error) {
+      debugPrint('Token validity check failed: $error');
+      await logout();
+      return false;
+    }
+  }
+
+  // Helper methods
+  void _resetAuthState() {
+    _user = null;
+    _token = null;
+    _isAuthenticated = false;
+    _error = null;
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();
@@ -324,4 +387,25 @@ class AuthProvider with ChangeNotifier {
   bool get isRecipient => _user?.isRecipient ?? false;
   bool get isVolunteer => _user?.isVolunteer ?? false;
   bool get isAdmin => _user?.isAdmin ?? false;
+
+  // User preferences
+  Future<bool> get shouldSaveLogin async {
+    return await _storageService.shouldSaveLogin();
+  }
+
+  // Validate session
+  Future<bool> validateSession() async {
+    if (_token == null || _user == null) {
+      return false;
+    }
+
+    try {
+      await _apiService.getCurrentUser();
+      return true;
+    } catch (error) {
+      debugPrint('Session validation failed: $error');
+      await logout();
+      return false;
+    }
+  }
 }

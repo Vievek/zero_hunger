@@ -6,8 +6,9 @@ const {
   login,
   getMe,
   completeProfile,
+  updateProfile,
 } = require("../controllers/authController");
-const auth = require("../middleware/auth");
+const { auth } = require("../middleware/auth");
 
 const router = express.Router();
 
@@ -16,6 +17,7 @@ router.post("/register", register);
 router.post("/login", login);
 router.get("/me", auth, getMe);
 router.post("/complete-profile", auth, completeProfile);
+router.put("/update-profile", auth, updateProfile);
 
 // Google OAuth routes (only if configured)
 if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {

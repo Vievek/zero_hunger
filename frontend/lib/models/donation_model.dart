@@ -17,6 +17,8 @@ class Donation {
   final List<dynamic> matchedRecipients;
   final String? acceptedBy;
   final String? assignedVolunteer;
+  final Map<String, dynamic>? donor; // Added donor field
+  final String? urgency; // Added urgency field
   final DateTime createdAt;
 
   Donation({
@@ -38,6 +40,8 @@ class Donation {
     this.matchedRecipients = const [],
     this.acceptedBy,
     this.assignedVolunteer,
+    this.donor,
+    this.urgency,
     required this.createdAt,
   });
 
@@ -67,6 +71,10 @@ class Donation {
       matchedRecipients: json['matchedRecipients'] ?? [],
       acceptedBy: json['acceptedBy'],
       assignedVolunteer: json['assignedVolunteer'],
+      donor: json['donor'] != null
+          ? Map<String, dynamic>.from(json['donor'])
+          : null,
+      urgency: json['urgency'],
       createdAt: DateTime.parse(json['createdAt']),
     );
   }
@@ -82,7 +90,57 @@ class Donation {
       'location': location,
       'categories': categories,
       'tags': tags,
+      'urgency': urgency,
     };
+  }
+
+  // CopyWith method for immutability
+  Donation copyWith({
+    String? id,
+    String? donorId,
+    String? type,
+    String? status,
+    List<String>? images,
+    String? aiDescription,
+    List<String>? categories,
+    List<String>? tags,
+    Map<String, dynamic>? quantity,
+    Map<String, dynamic>? handlingWindow,
+    String? expectedQuantity,
+    DateTime? scheduledPickup,
+    String? pickupAddress,
+    Map<String, dynamic>? location,
+    Map<String, dynamic>? aiAnalysis,
+    List<dynamic>? matchedRecipients,
+    String? acceptedBy,
+    String? assignedVolunteer,
+    Map<String, dynamic>? donor,
+    String? urgency,
+    DateTime? createdAt,
+  }) {
+    return Donation(
+      id: id ?? this.id,
+      donorId: donorId ?? this.donorId,
+      type: type ?? this.type,
+      status: status ?? this.status,
+      images: images ?? this.images,
+      aiDescription: aiDescription ?? this.aiDescription,
+      categories: categories ?? this.categories,
+      tags: tags ?? this.tags,
+      quantity: quantity ?? this.quantity,
+      handlingWindow: handlingWindow ?? this.handlingWindow,
+      expectedQuantity: expectedQuantity ?? this.expectedQuantity,
+      scheduledPickup: scheduledPickup ?? this.scheduledPickup,
+      pickupAddress: pickupAddress ?? this.pickupAddress,
+      location: location ?? this.location,
+      aiAnalysis: aiAnalysis ?? this.aiAnalysis,
+      matchedRecipients: matchedRecipients ?? this.matchedRecipients,
+      acceptedBy: acceptedBy ?? this.acceptedBy,
+      assignedVolunteer: assignedVolunteer ?? this.assignedVolunteer,
+      donor: donor ?? this.donor,
+      urgency: urgency ?? this.urgency,
+      createdAt: createdAt ?? this.createdAt,
+    );
   }
 
   // Helper methods
@@ -146,5 +204,21 @@ class Donation {
   String get suggestedHandling {
     return aiAnalysis?['suggestedHandling'] ??
         'Handle with standard food safety precautions';
+  }
+
+  // Check if donation is expiring soon
+  bool get isExpiringSoon {
+    if (handlingWindow == null) return false;
+
+    try {
+      final end = DateTime.parse(handlingWindow!['end']);
+      final now = DateTime.now();
+      final timeRemaining = end.difference(now);
+
+      // Consider expiring soon if less than 4 hours remaining
+      return timeRemaining.inHours <= 4 && timeRemaining.inHours > 0;
+    } catch (e) {
+      return false;
+    }
   }
 }

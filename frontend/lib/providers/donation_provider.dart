@@ -1,54 +1,87 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import '../models/donation_model.dart';
 import '../services/api_service.dart';
 
 class DonationProvider with ChangeNotifier {
-  final ApiService _apiService =
-      ApiService(); // ✅ Now shares singleton instance
+  final ApiService _apiService = ApiService();
 
   List<Donation> _donations = [];
+  List<Donation> _availableDonations = [];
   bool _isLoading = false;
   String? _error;
   final Map<String, bool> _processingDonations = {};
+  Map<String, dynamic> _donationStats = {};
 
   List<Donation> get donations => _donations;
+  List<Donation> get availableDonations => _availableDonations;
   bool get isLoading => _isLoading;
   String? get error => _error;
-  Map<String, bool> get processingDonations => _processingDonations;
+  Map<String, dynamic> get donationStats => _donationStats;
 
-  // ❌ REMOVED setAuthToken method - No longer needed with singleton
-
-  Future<void> createDonation(
-      Donation donation, List<String> imagePaths) async {
+  Future<void> createDonation(Donation donation, List<File> imageFiles) async {
     try {
       _isLoading = true;
       _error = null;
       notifyListeners();
 
-      // Upload images first if any
+      // Upload images first
       List<String> imageUrls = [];
-      if (imagePaths.isNotEmpty) {
-        imageUrls = await _apiService.uploadImages(imagePaths);
+      if (imageFiles.isNotEmpty) {
+        imageUrls = await uploadImages(imageFiles);
       }
 
-      // Create donation with image URLs
+      // Create donation with enhanced data
       final donationData = donation.toJson();
       donationData['images'] = imageUrls;
+
+      // Add urgency if available from AI analysis
+      if (donation.aiAnalysis?['urgency'] != null) {
+        donationData['urgency'] = donation.aiAnalysis!['urgency'];
+      }
 
       final response = await _apiService.createDonation(donationData);
       final newDonation = Donation.fromJson(response['data']);
 
-      // Add to donations list
       _donations.insert(0, newDonation);
+      _processingDonations[newDonation.id!] = true;
 
-      // Track AI processing status
-      if (newDonation.status == 'ai_processing') {
-        _processingDonations[newDonation.id!] = true;
+      _isLoading = false;
+      notifyListeners();
 
-        // Start polling for AI completion
+      // Start polling for AI processing status
+      if (imageFiles.isNotEmpty) {
         _startPollingDonationStatus(newDonation.id!);
       }
+    } catch (error) {
+      _isLoading = false;
+      _error = error.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
 
+  Future<List<String>> uploadImages(List<File> imageFiles) async {
+    try {
+      final response = await _apiService.uploadImages(imageFiles);
+      return List<String>.from(response['data']['images']);
+    } catch (error) {
+      throw Exception('Failed to upload images: $error');
+    }
+  }
+
+  Future<void> fetchMyDonations() async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      final response = await _apiService.getMyDonations();
+      _donations = (response['data']['donations'] as List)
+          .map((item) => Donation.fromJson(item))
+          .toList();
+
+      _updateProcessingStatus();
       _isLoading = false;
       notifyListeners();
     } catch (error) {
@@ -59,28 +92,30 @@ class DonationProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchMyDonations() async {
+  Future<void> fetchAvailableDonations(
+      {int page = 1,
+      int limit = 10,
+      String? query,
+      List<String>? categories}) async {
     try {
       _isLoading = true;
       _error = null;
       notifyListeners();
-      debugPrint('📦 fetchMyDonations() called');
 
-      // ✅ Check if we have the auth token in this ApiService instance
-      debugPrint('📦 About to call _apiService.getMyDonations()');
+      final response = await _apiService.getAvailableDonations(
+        page: page,
+        limit: limit,
+        query: query,
+        categories: categories,
+      );
 
-      final response = await _apiService.getMyDonations();
-      _donations = (response['data']['donations'] as List)
+      _availableDonations = (response['data']['donations'] as List)
           .map((item) => Donation.fromJson(item))
           .toList();
-
-      // Update processing status
-      _updateProcessingStatus();
 
       _isLoading = false;
       notifyListeners();
     } catch (error) {
-      debugPrint('📦 ❌ fetchMyDonations ERROR: $error');
       _isLoading = false;
       _error = error.toString();
       notifyListeners();
@@ -95,8 +130,16 @@ class DonationProvider with ChangeNotifier {
 
       await _apiService.acceptDonation(donationId);
 
-      // Refresh donations list to get updated status
-      await fetchMyDonations();
+      // Remove from available donations and add to my donations
+      final acceptedDonationIndex =
+          _availableDonations.indexWhere((d) => d.id == donationId);
+      if (acceptedDonationIndex != -1) {
+        final acceptedDonation = _availableDonations[acceptedDonationIndex];
+        _availableDonations.removeAt(acceptedDonationIndex);
+        _donations.insert(0, acceptedDonation.copyWith(status: 'matched'));
+      }
+
+      notifyListeners();
     } catch (error) {
       _error = error.toString();
       notifyListeners();
@@ -113,56 +156,84 @@ class DonationProvider with ChangeNotifier {
     }
   }
 
-  // Poll donation status for AI processing
-  void _startPollingDonationStatus(String donationId) {
-    const pollingInterval = Duration(seconds: 5);
-    const maxPollingDuration = Duration(minutes: 2); // Stop after 2 minutes
+  Future<void> updateDonationStatus(String donationId, String status) async {
+    try {
+      await _apiService.updateDonationStatus(donationId, status);
 
-    int pollCount = 0;
-    final maxPolls = maxPollingDuration.inSeconds ~/ pollingInterval.inSeconds;
-
-    Future<void> pollStatus() async {
-      if (pollCount >= maxPolls) {
-        // Stop polling after max duration
-        _processingDonations.remove(donationId);
+      // Update local state
+      final donationIndex = _donations.indexWhere((d) => d.id == donationId);
+      if (donationIndex != -1) {
+        _donations[donationIndex] =
+            _donations[donationIndex].copyWith(status: status);
         notifyListeners();
-        return;
       }
-
-      await Future.delayed(pollingInterval);
-
-      try {
-        final updatedDonation = await getDonationDetails(donationId);
-
-        // Find and update the donation in the list
-        final index = _donations.indexWhere((d) => d.id == donationId);
-        if (index != -1) {
-          _donations[index] = updatedDonation;
-        }
-
-        // Check if AI processing is complete
-        if (updatedDonation.status != 'ai_processing') {
-          _processingDonations.remove(donationId);
-        } else {
-          // Continue polling
-          pollCount++;
-          pollStatus();
-        }
-
-        notifyListeners();
-      } catch (error) {
-        debugPrint('Polling error for donation $donationId: $error');
-        // Continue polling despite errors
-        pollCount++;
-        pollStatus();
+    } catch (error) {
+      if (kDebugMode) {
+        print('Failed to update donation status: $error');
       }
+      rethrow;
     }
-
-    // Start polling
-    pollStatus();
   }
 
-  // Update processing status for all donations
+  Future<void> fetchDonationStats() async {
+    try {
+      final response = await _apiService.getDonationStats();
+      _donationStats = Map<String, dynamic>.from(response['data']);
+      notifyListeners();
+    } catch (error) {
+      if (kDebugMode) {
+        print('Failed to fetch donation stats: $error');
+      }
+    }
+  }
+
+  Future<List<Donation>> searchDonations(String query,
+      {List<String>? categories, double? maxDistance}) async {
+    try {
+      final response = await _apiService.searchDonations(
+        query,
+        categories: categories,
+        maxDistance: maxDistance,
+      );
+      return (response['data'] as List)
+          .map((item) => Donation.fromJson(item))
+          .toList();
+    } catch (error) {
+      rethrow;
+    }
+  }
+
+  void _startPollingDonationStatus(String donationId) {
+    // Implement polling logic for AI processing status
+    // This would periodically check the donation status until AI processing is complete
+    Future.delayed(Duration(seconds: 5), () async {
+      if (_processingDonations[donationId] == true) {
+        try {
+          final updatedDonation = await getDonationDetails(donationId);
+          final donationIndex =
+              _donations.indexWhere((d) => d.id == donationId);
+          if (donationIndex != -1) {
+            _donations[donationIndex] = updatedDonation;
+            notifyListeners();
+          }
+
+          // Continue polling if still processing
+          if (updatedDonation.status == 'ai_processing') {
+            _startPollingDonationStatus(donationId);
+          } else {
+            _processingDonations.remove(donationId);
+          }
+        } catch (error) {
+          if (kDebugMode) {
+            print('Error polling donation status: $error');
+          }
+          // Stop polling on error
+          _processingDonations.remove(donationId);
+        }
+      }
+    });
+  }
+
   void _updateProcessingStatus() {
     _processingDonations.clear();
     for (final donation in _donations) {
@@ -173,13 +244,11 @@ class DonationProvider with ChangeNotifier {
     }
   }
 
-  // Check if a donation is currently being processed by AI
   bool isProcessing(String donationId) {
     return _processingDonations[donationId] == true;
   }
 
-  // Get donation statistics
-  Map<String, int> get donationStats {
+  Map<String, int> get donationStatsSummary {
     return {
       'total': _donations.length,
       'active': _donations
@@ -192,8 +261,47 @@ class DonationProvider with ChangeNotifier {
     };
   }
 
+  // Helper getters
+  List<Donation> get activeDonations => _donations
+      .where((d) => ['active', 'matched', 'scheduled'].contains(d.status))
+      .toList();
+
+  List<Donation> get completedDonations =>
+      _donations.where((d) => d.status == 'delivered').toList();
+
+  List<Donation> get pendingDonations => _donations
+      .where((d) => ['pending', 'ai_processing'].contains(d.status))
+      .toList();
+
+  List<Donation> get expiringSoonDonations =>
+      _donations.where((d) => d.isActive && d.isExpiringSoon).toList();
+
+  Donation? getDonationById(String donationId) {
+    try {
+      return _donations.firstWhere((d) => d.id == donationId);
+    } catch (e) {
+      return null;
+    }
+  }
+
   void clearError() {
     _error = null;
     notifyListeners();
+  }
+
+  // Refresh specific donation
+  Future<void> refreshDonation(String donationId) async {
+    try {
+      final updatedDonation = await getDonationDetails(donationId);
+      final donationIndex = _donations.indexWhere((d) => d.id == donationId);
+      if (donationIndex != -1) {
+        _donations[donationIndex] = updatedDonation;
+        notifyListeners();
+      }
+    } catch (error) {
+      if (kDebugMode) {
+        print('Failed to refresh donation: $error');
+      }
+    }
   }
 }

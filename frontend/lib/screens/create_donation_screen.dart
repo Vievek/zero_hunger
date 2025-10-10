@@ -17,17 +17,47 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   final ImagePicker _imagePicker = ImagePicker();
 
   String _donationType = 'normal';
-  final List<String> _selectedImages = [];
+  final List<File> _selectedImages = [];
+  final TextEditingController _descriptionController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController();
   final TextEditingController _unitController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
   final TextEditingController _expectedQuantityController =
       TextEditingController();
+
+  final List<String> _selectedCategories = [];
+  final List<String> _selectedTags = [];
+
   DateTime? _scheduledPickup;
   bool _isSubmitting = false;
 
+  final List<String> _availableCategories = [
+    'prepared-meal',
+    'fruits',
+    'vegetables',
+    'baked-goods',
+    'dairy',
+    'meat',
+    'seafood',
+    'grains',
+    'beverages',
+    'other'
+  ];
+
+  final List<String> _availableTags = [
+    'vegetarian',
+    'vegan',
+    'gluten-free',
+    'dairy-free',
+    'nut-free',
+    'halal',
+    'kosher',
+    'organic'
+  ];
+
   @override
   void dispose() {
+    _descriptionController.dispose();
     _quantityController.dispose();
     _unitController.dispose();
     _addressController.dispose();
@@ -65,6 +95,14 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     _buildImageUploadSection(),
                     const SizedBox(height: 20),
 
+                    // Description
+                    _buildDescriptionSection(),
+                    const SizedBox(height: 20),
+
+                    // Categories & Tags
+                    _buildCategoriesSection(),
+                    const SizedBox(height: 20),
+
                     // Quantity
                     _buildQuantitySection(),
                     const SizedBox(height: 20),
@@ -81,8 +119,6 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     if (_donationType == 'bulk') _buildScheduledPickupSection(),
 
                     const SizedBox(height: 30),
-
-                    // Submit Button
                     _buildSubmitButton(),
                   ],
                 ),
@@ -101,7 +137,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           Text('Creating your donation...'),
           SizedBox(height: 10),
           Text(
-            'AI is analyzing your food images',
+            'AI is analyzing your food images and finding the best matches',
             style: TextStyle(color: Colors.grey),
             textAlign: TextAlign.center,
           ),
@@ -119,11 +155,6 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Normal: Daily surplus food\nBulk: Event or large quantity donations',
-          style: TextStyle(fontSize: 12, color: Colors.grey),
-        ),
-        const SizedBox(height: 12),
         SegmentedButton<String>(
           segments: const [
             ButtonSegment<String>(
@@ -180,7 +211,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(12),
                           image: DecorationImage(
-                            image: FileImage(File(entry.value)),
+                            image: FileImage(entry.value),
                             fit: BoxFit.cover,
                           ),
                           border: Border.all(color: Colors.grey.shade300),
@@ -197,8 +228,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                           },
                           child: Container(
                             decoration: BoxDecoration(
-                              color: Colors.red.withAlpha(
-                                  229), // Fixed deprecated withOpacity
+                              color: Colors.red.withAlpha(229),
                               shape: BoxShape.circle,
                             ),
                             padding: const EdgeInsets.all(4),
@@ -244,6 +274,105 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
             style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
           ),
         ],
+      ],
+    );
+  }
+
+  Widget _buildDescriptionSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Food Description *',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: _descriptionController,
+          decoration: const InputDecoration(
+            labelText: 'Describe the food items',
+            border: OutlineInputBorder(),
+            hintText:
+                'e.g., 20 portions of chicken pasta, 10 sandwiches, fresh fruits...',
+          ),
+          maxLines: 3,
+          validator: (value) {
+            if (value == null || value.isEmpty) {
+              return 'Please describe the food items';
+            }
+            return null;
+          },
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Provide a clear description. AI will enhance this with image analysis if photos are added.',
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategoriesSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Categories & Tags',
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 8),
+
+        // Categories
+        const Text('Categories:',
+            style: TextStyle(fontWeight: FontWeight.w500)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _availableCategories.map((category) {
+            final isSelected = _selectedCategories.contains(category);
+            return FilterChip(
+              label: Text(category.replaceAll('-', ' ')),
+              selected: isSelected,
+              onSelected: (selected) {
+                setState(() {
+                  if (selected) {
+                    _selectedCategories.add(category);
+                  } else {
+                    _selectedCategories.remove(category);
+                  }
+                });
+              },
+            );
+          }).toList(),
+        ),
+
+        const SizedBox(height: 16),
+
+        // Dietary Tags
+        const Text('Dietary Tags:',
+            style: TextStyle(fontWeight: FontWeight.w500)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: _availableTags.map((tag) {
+            final isSelected = _selectedTags.contains(tag);
+            return FilterChip(
+              label: Text(tag),
+              selected: isSelected,
+              onSelected: (selected) {
+                setState(() {
+                  if (selected) {
+                    _selectedTags.add(tag);
+                  } else {
+                    _selectedTags.remove(tag);
+                  }
+                });
+              },
+            );
+          }).toList(),
+        ),
       ],
     );
   }
@@ -373,11 +502,6 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        const Text(
-          'For bulk donations, schedule when the food will be ready for pickup',
-          style: TextStyle(fontSize: 12, color: Colors.grey),
-        ),
-        const SizedBox(height: 12),
         Container(
           width: double.infinity,
           padding: const EdgeInsets.all(16),
@@ -464,7 +588,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
 
       if (image != null && mounted) {
         setState(() {
-          _selectedImages.add(image.path);
+          _selectedImages.add(File(image.path));
         });
       }
     } catch (e) {
@@ -514,44 +638,62 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   }
 
   Future<void> _submitDonation() async {
+    // Get the provider reference before any async operations
+    final donationProvider =
+        Provider.of<DonationProvider>(context, listen: false);
+
     if (!_formKey.currentState!.validate()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Please fix the errors above')),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please fix the errors above')),
+        );
+      }
       return;
     }
 
     if (_donationType == 'bulk') {
       if (_scheduledPickup == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content: Text(
-                  'Please select scheduled pickup time for bulk donations')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content: Text(
+                    'Please select scheduled pickup time for bulk donations')),
+          );
+        }
         return;
       }
       if (_expectedQuantityController.text.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-              content:
-                  Text('Please provide expected quantity for bulk donation')),
-        );
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+                content:
+                    Text('Please provide expected quantity for bulk donation')),
+          );
+        }
         return;
       }
     }
+
+    if (!mounted) return;
 
     setState(() {
       _isSubmitting = true;
     });
 
     try {
+      List<String> imageUrls = [];
+      if (_selectedImages.isNotEmpty) {
+        imageUrls = await donationProvider.uploadImages(_selectedImages);
+      }
+
       final donation = Donation(
         donorId: '', // Will be set by backend
         type: _donationType,
         status: 'pending',
-        images: [],
-        categories: [], // Will be set by AI
-        tags: [], // Will be set by AI
+        images: imageUrls,
+        aiDescription: _descriptionController.text,
+        categories: _selectedCategories,
+        tags: _selectedTags,
         quantity: {
           'amount': double.parse(_quantityController.text),
           'unit': _unitController.text,
@@ -561,23 +703,20 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         scheduledPickup: _scheduledPickup,
         pickupAddress: _addressController.text,
         location: {
-          'lat': 0.0, // In production, integrate with geolocation service
+          'lat': 0.0, // In production, get from geocoding
           'lng': 0.0,
         },
         createdAt: DateTime.now(),
       );
 
-      await Provider.of<DonationProvider>(
-        context,
-        listen: false,
-      ).createDonation(donation, _selectedImages);
+      await donationProvider.createDonation(donation, _selectedImages);
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(_selectedImages.isEmpty
-                ? 'Donation created successfully!'
-                : 'Donation created! AI is analyzing your images...'),
+                ? 'Donation created successfully! Finding recipients...'
+                : 'Donation created! AI analysis completed and finding recipients...'),
             duration: const Duration(seconds: 3),
           ),
         );

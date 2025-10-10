@@ -1,5 +1,6 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
+const cacheManager = require("../utils/cacheManager");
 
 class GeminiAIService {
   constructor() {
@@ -7,7 +8,7 @@ class GeminiAIService {
     this.model = this.genAI.getGenerativeModel({
       model: "gemini-1.5-flash",
       generationConfig: {
-        temperature: 0.2, // Lower temperature for more factual responses
+        temperature: 0.2,
         topK: 20,
         topP: 0.8,
         maxOutputTokens: 1024,
@@ -24,7 +25,6 @@ class GeminiAIService {
       ],
     });
 
-    // Food safety authority knowledge base for chatbot
     this.FOOD_SAFETY_KNOWLEDGE = {
       sources: [
         "World Health Organization (WHO) - Food Safety Guidelines",
@@ -40,8 +40,11 @@ class GeminiAIService {
     };
   }
 
-  // Analyze food images and generate description - UNCHANGED
   async analyzeFoodImages(images) {
+    const cacheKey = `food_analysis_${JSON.stringify(images)}`;
+    const cached = await cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     try {
       const prompt = `
         You are a food safety and analysis expert. Analyze these food images thoroughly and provide accurate information in JSON format.
@@ -57,6 +60,7 @@ class GeminiAIService {
         6. Safety warnings if any (spoilage signs, improper storage, etc.)
         7. Suggested handling instructions
         8. Estimated shelf life in hours
+        9. Recommended urgency level (critical, high, normal)
 
         JSON Format:
         {
@@ -67,19 +71,17 @@ class GeminiAIService {
           "freshnessScore": number between 0.1 and 1.0,
           "safetyWarnings": ["array of warnings or empty array"],
           "suggestedHandling": "string with handling instructions",
-          "estimatedShelfLife": "string describing shelf life"
+          "estimatedShelfLife": "string describing shelf life",
+          "urgency": "critical|high|normal"
         }
 
         Be accurate and conservative in your assessments, especially for food safety.
       `;
 
-      // Convert images to Gemini format
       const imageParts = await Promise.all(
         images.map(async (imageUrl) => {
           try {
-            // Handle both URLs and base64 data
             if (imageUrl.startsWith("data:")) {
-              // Base64 image data
               const [header, base64Data] = imageUrl.split(",");
               const mimeType = header.match(/:(.*?);/)[1];
 
@@ -90,13 +92,11 @@ class GeminiAIService {
                 },
               };
             } else {
-              // URL - fetch the image
               const response = await axios.get(imageUrl, {
                 responseType: "arraybuffer",
                 timeout: 30000,
               });
 
-              // Detect mime type from response or default to jpeg
               const mimeType = response.headers["content-type"] || "image/jpeg";
 
               return {
@@ -117,7 +117,6 @@ class GeminiAIService {
       const response = await result.response;
       const text = response.text();
 
-      // Clean the response and extract JSON
       const cleanedText = text.trim();
       const jsonMatch = cleanedText.match(/\{[\s\S]*\}/);
 
@@ -147,12 +146,23 @@ class GeminiAIService {
         Math.min(1.0, analysisResult.freshnessScore)
       );
 
+      // Set default urgency if not provided
+      if (!analysisResult.urgency) {
+        analysisResult.urgency =
+          analysisResult.freshnessScore > 0.7
+            ? "normal"
+            : analysisResult.freshnessScore > 0.4
+            ? "high"
+            : "critical";
+      }
+
+      await cacheManager.set(cacheKey, analysisResult, 3600); // Cache for 1 hour
       return analysisResult;
     } catch (error) {
       console.error("Gemini AI analysis error:", error);
 
-      // Return a fallback analysis if AI fails
-      return {
+      // Enhanced fallback analysis
+      const fallback = {
         description: "Food items - manual description required",
         categories: ["other"],
         allergens: [],
@@ -161,14 +171,24 @@ class GeminiAIService {
         safetyWarnings: [
           "AI analysis unavailable - manual inspection recommended",
         ],
-        suggestedHandling: "Handle with standard food safety precautions",
+        suggestedHandling:
+          "Handle with standard food safety precautions. Keep refrigerated and consume quickly.",
         estimatedShelfLife: "4-6 hours",
+        urgency: "normal",
       };
+
+      await cacheManager.set(cacheKey, fallback, 600); // Cache fallback for 10 minutes
+      return fallback;
     }
   }
 
-  // FIXED: Generate food safety information with authority references (only 2 parameters)
-  async generateFoodSafetyInfo(foodType, question) {
+  async generateFoodSafetyInfo(foodType, question, context = {}) {
+    const cacheKey = `safety_info_${foodType}_${Buffer.from(question)
+      .toString("base64")
+      .substring(0, 50)}`;
+    const cached = await cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     try {
       const prompt = `
         You are a certified food safety expert working with global food safety authorities. 
@@ -176,11 +196,18 @@ class GeminiAIService {
 
         FOOD TYPE: ${foodType}
         QUESTION: ${question}
+        CONTEXT: ${JSON.stringify(context)}
 
         CRITICAL FOOD SAFETY PARAMETERS:
-        - Temperature Danger Zone: ${this.FOOD_SAFETY_KNOWLEDGE.temperatureDangerZone}
-        - Maximum refrigeration time: ${this.FOOD_SAFETY_KNOWLEDGE.maxRefrigerationTime} 
-        - Reheating temperature: ${this.FOOD_SAFETY_KNOWLEDGE.reheatingTemperature}
+        - Temperature Danger Zone: ${
+          this.FOOD_SAFETY_KNOWLEDGE.temperatureDangerZone
+        }
+        - Maximum refrigeration time: ${
+          this.FOOD_SAFETY_KNOWLEDGE.maxRefrigerationTime
+        } 
+        - Reheating temperature: ${
+          this.FOOD_SAFETY_KNOWLEDGE.reheatingTemperature
+        }
 
         REQUIREMENTS:
         1. Provide specific, actionable advice
@@ -200,7 +227,8 @@ class GeminiAIService {
           "timeLimits": ["array of time-based safety rules"],
           "commonMistakes": ["array of common errors to avoid"],
           "additionalTips": ["array of extra safety considerations"],
-          "authorityReferences": ["array of which authorities this follows"]
+          "authorityReferences": ["array of which authorities this follows"],
+          "confidenceScore": 0.95
         }
 
         Base your response on established food safety science from WHO, FDA, USDA, and other global authorities.
@@ -211,7 +239,6 @@ class GeminiAIService {
       const response = await result.response;
       const text = response.text();
 
-      // Enhanced JSON parsing with fallbacks
       const jsonMatch = text.match(/\{[\s\S]*\}/);
       if (!jsonMatch) {
         throw new Error("AI response is not valid JSON");
@@ -221,93 +248,106 @@ class GeminiAIService {
 
       // Ensure all required fields exist with proper fallbacks
       safetyInfo = {
-        answer:
-          safetyInfo.answer ||
-          "Follow standard food safety practices. Keep foods at safe temperatures and when in doubt, throw it out.",
-        safetyGuidelines: safetyInfo.safetyGuidelines || [
-          "Keep foods at safe temperatures (below 4°C or above 60°C)",
-          "Practice good hygiene and prevent cross-contamination",
-          "When in doubt, throw it out - better safe than sorry",
-        ],
-        storageRecommendations: safetyInfo.storageRecommendations || [
-          "Refrigerate promptly within 2 hours",
-          "Use airtight containers for storage",
-          "Label with dates and contents",
-        ],
-        temperatureGuidelines: safetyInfo.temperatureGuidelines || [
-          "Keep hot foods hot (>60°C/140°F)",
-          "Keep cold foods cold (<4°C/40°F)",
-          "Reheat leftovers to 74°C/165°F",
-        ],
-        timeLimits: safetyInfo.timeLimits || [
-          "Discard perishables left in danger zone >2 hours",
-          "Use refrigerated leftovers within 3-4 days",
-          "Follow 'first in, first out' principle",
-        ],
-        commonMistakes: safetyInfo.commonMistakes || [
-          "Tasting food to check if it's spoiled",
-          "Ignoring unusual odors or colors",
-          "Overcrowding refrigerator",
-        ],
-        additionalTips: safetyInfo.additionalTips || [
-          "Consult local food safety authorities for specific concerns",
-          "Follow manufacturer storage instructions when available",
-        ],
+        answer: safetyInfo.answer || this.getFallbackAnswer(foodType, question),
+        safetyGuidelines:
+          safetyInfo.safetyGuidelines || this.getFallbackGuidelines(),
+        storageRecommendations:
+          safetyInfo.storageRecommendations || this.getFallbackStorage(),
+        temperatureGuidelines:
+          safetyInfo.temperatureGuidelines || this.getFallbackTemperatures(),
+        timeLimits: safetyInfo.timeLimits || this.getFallbackTimeLimits(),
+        commonMistakes: safetyInfo.commonMistakes || this.getFallbackMistakes(),
+        additionalTips: safetyInfo.additionalTips || this.getFallbackTips(),
         authorityReferences:
           safetyInfo.authorityReferences || this.FOOD_SAFETY_KNOWLEDGE.sources,
+        confidenceScore: safetyInfo.confidenceScore || 0.8,
+        sources: this.FOOD_SAFETY_KNOWLEDGE.sources,
       };
 
-      // Add the knowledge base sources to ensure they're always included
-      safetyInfo.sources = this.FOOD_SAFETY_KNOWLEDGE.sources;
-
+      await cacheManager.set(cacheKey, safetyInfo, 1800); // Cache for 30 minutes
       return safetyInfo;
     } catch (error) {
       console.error("Food safety info generation error:", error);
 
-      // Enhanced fallback response with authority references
-      return {
-        answer:
-          "I'm currently unable to access detailed food safety information. However, based on established food safety guidelines from WHO and FDA:\n\n• Keep hot foods hot (above 60°C/140°F) and cold foods cold (below 4°C/40°F)\n• When in doubt, throw it out - this is the safest approach\n• Wash hands and surfaces often\n• Separate raw and cooked foods\n• Cook to proper temperatures\n• Refrigerate promptly within 2 hours",
-        safetyGuidelines: [
-          "Keep perishables out of temperature danger zone (4°C-60°C)",
-          "Use refrigerated leftovers within 3-4 days",
-          "Reheat leftovers to 74°C (165°F)",
-          "When in doubt, discard questionable food",
-        ],
-        storageRecommendations: [
-          "Refrigerate at or below 4°C (40°F)",
-          "Freeze at or below -18°C (0°F)",
-          "Use airtight containers for storage",
-          "Label and date all stored foods",
-        ],
-        temperatureGuidelines: [
-          "Keep hot foods above 60°C (140°F)",
-          "Keep cold foods below 4°C (40°F)",
-          "Reheat to 74°C (165°F) if applicable",
-        ],
-        timeLimits: [
-          "Maximum 2 hours in temperature danger zone",
-          "3-4 days for refrigerated leftovers",
-          "Follow 'first in, first out' principle",
-        ],
-        commonMistakes: [
-          "Tasting food to check spoilage",
-          "Ignoring unusual odors or colors",
-          "Overcrowding refrigerator",
-        ],
-        additionalTips: [
-          "Consult local food safety authorities for specific concerns",
-          "Follow manufacturer storage instructions when available",
-        ],
-        authorityReferences: this.FOOD_SAFETY_KNOWLEDGE.sources,
-        sources: this.FOOD_SAFETY_KNOWLEDGE.sources,
-        confidenceScore: 0.8,
-      };
+      const fallback = this.getEnhancedFallbackResponse(foodType, question);
+      await cacheManager.set(cacheKey, fallback, 600); // Cache fallback for 10 minutes
+      return fallback;
     }
   }
 
-  // ENHANCED: Generate QR code content for food labels with safety focus
+  getFallbackAnswer(foodType, question) {
+    return `Based on established food safety guidelines from WHO and FDA for ${foodType}:\n\n• Keep hot foods hot (above 60°C/140°F) and cold foods cold (below 4°C/40°F)\n• When in doubt, throw it out - this is always the safest approach\n• Wash hands and surfaces often\n• Separate raw and cooked foods\n• Cook to proper temperatures\n• Refrigerate promptly within 2 hours`;
+  }
+
+  getFallbackGuidelines() {
+    return [
+      "Keep perishables out of temperature danger zone (4°C-60°C)",
+      "Use refrigerated leftovers within 3-4 days",
+      "Reheat leftovers to 74°C (165°F)",
+      "When in doubt, discard questionable food",
+    ];
+  }
+
+  getFallbackStorage() {
+    return [
+      "Refrigerate at or below 4°C (40°F)",
+      "Freeze at or below -18°C (0°F)",
+      "Use airtight containers for storage",
+      "Label and date all stored foods",
+    ];
+  }
+
+  getFallbackTemperatures() {
+    return [
+      "Keep hot foods above 60°C (140°F)",
+      "Keep cold foods below 4°C (40°F)",
+      "Reheat to 74°C (165°F) if applicable",
+    ];
+  }
+
+  getFallbackTimeLimits() {
+    return [
+      "Maximum 2 hours in temperature danger zone",
+      "3-4 days for refrigerated leftovers",
+      "Follow 'first in, first out' principle",
+    ];
+  }
+
+  getFallbackMistakes() {
+    return [
+      "Tasting food to check spoilage",
+      "Ignoring unusual odors or colors",
+      "Overcrowding refrigerator",
+    ];
+  }
+
+  getFallbackTips() {
+    return [
+      "Consult local food safety authorities for specific concerns",
+      "Follow manufacturer storage instructions when available",
+    ];
+  }
+
+  getEnhancedFallbackResponse(foodType, question) {
+    return {
+      answer: this.getFallbackAnswer(foodType, question),
+      safetyGuidelines: this.getFallbackGuidelines(),
+      storageRecommendations: this.getFallbackStorage(),
+      temperatureGuidelines: this.getFallbackTemperatures(),
+      timeLimits: this.getFallbackTimeLimits(),
+      commonMistakes: this.getFallbackMistakes(),
+      additionalTips: this.getFallbackTips(),
+      authorityReferences: this.FOOD_SAFETY_KNOWLEDGE.sources,
+      sources: this.FOOD_SAFETY_KNOWLEDGE.sources,
+      confidenceScore: 0.7,
+    };
+  }
+
   async generateQRCodeContent(donationDetails) {
+    const cacheKey = `qr_content_${JSON.stringify(donationDetails)}`;
+    const cached = await cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     try {
       const prompt = `
         Generate EXTREMELY CONCISE food safety handling instructions for a QR code label.
@@ -316,6 +356,7 @@ class GeminiAIService {
         Food: ${donationDetails.description}
         Categories: ${donationDetails.categories?.join(", ") || "Various"}
         Allergens: ${donationDetails.allergens?.join(", ") || "None listed"}
+        Food Type: ${donationDetails.foodType || "General"}
         Special Instructions: ${
           donationDetails.handlingInstructions || "Standard handling"
         }
@@ -352,22 +393,28 @@ class GeminiAIService {
         labelText = `${allergenWarning}Keep refrigerated <4°C. Use within 24h. When in doubt, discard.`;
       }
 
+      await cacheManager.set(cacheKey, labelText, 86400); // Cache for 24 hours
       return labelText;
     } catch (error) {
       console.error("QR code content generation error:", error);
 
-      // Enhanced safety-focused fallback
       const hasAllergens =
         donationDetails.allergens && donationDetails.allergens.length > 0;
       const allergenWarning = hasAllergens
         ? `Contains: ${donationDetails.allergens.join(", ")}. `
         : "";
-      return `${allergenWarning}Refrigerate below 4°C. Use within 24h. Check before use.`;
+      const fallback = `${allergenWarning}Refrigerate below 4°C. Use within 24h. Check before use.`;
+
+      await cacheManager.set(cacheKey, fallback, 86400);
+      return fallback;
     }
   }
 
-  // NEW: Generate food safety checklist for different food types
   async generateSafetyChecklist(foodType = "general") {
+    const cacheKey = `checklist_${foodType}`;
+    const cached = await cacheManager.get(cacheKey);
+    if (cached) return cached;
+
     try {
       const prompt = `
         Create a specific food safety checklist for: ${foodType}
@@ -391,33 +438,31 @@ class GeminiAIService {
 
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const checklist = JSON.parse(jsonMatch[0]);
+        await cacheManager.set(cacheKey, checklist, 86400); // Cache for 24 hours
+        return checklist;
       }
 
-      // Enhanced fallback checklist with food safety focus
-      return [
-        "Verify temperature: Below 4°C or above 60°C",
-        "Check for unusual odors, colors, or textures",
-        "Inspect packaging for damage or leaks",
-        "Confirm storage time within safe limits",
-        "Check separation from raw food contamination",
-        "Validate handling procedures were followed",
-        "Ensure allergen awareness and labeling",
-      ];
+      throw new Error("Invalid checklist format");
     } catch (error) {
       console.error("Checklist generation error:", error);
 
-      // Comprehensive fallback checklist
-      return [
-        "Temperature check: Ensure proper storage temperature",
-        "Visual inspection: Look for spoilage signs",
-        "Packaging integrity: Check for damage or leaks",
-        "Time validation: Confirm within safe time limits",
-        "Cross-contamination: Verify separation from raw foods",
-        "Allergen check: Review for allergen presence",
-        "Handling verification: Ensure proper handling procedures",
-      ];
+      const fallback = this.getFallbackChecklist(foodType);
+      await cacheManager.set(cacheKey, fallback, 86400);
+      return fallback;
     }
+  }
+
+  getFallbackChecklist(foodType) {
+    return [
+      "Verify temperature: Below 4°C or above 60°C",
+      "Check for unusual odors, colors, or textures",
+      "Inspect packaging for damage or leaks",
+      "Confirm storage time within safe limits",
+      "Check separation from raw food contamination",
+      "Validate handling procedures were followed",
+      "Ensure allergen awareness and labeling",
+    ];
   }
 }
 

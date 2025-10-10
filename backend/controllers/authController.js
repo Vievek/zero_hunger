@@ -1,14 +1,12 @@
 const User = require("../models/User");
 const jwt = require("jsonwebtoken");
 
-// Generate JWT Token
 const generateToken = (userId) => {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
 };
 
-// Register User
 exports.register = async (req, res) => {
   try {
     const {
@@ -23,7 +21,15 @@ exports.register = async (req, res) => {
       volunteerDetails,
     } = req.body;
 
-    // Check if user already exists
+    // Enhanced validation
+    if (!name || !email || !password || !role) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Please provide all required fields: name, email, password, role",
+      });
+    }
+
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -32,25 +38,42 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Create new user
-    const user = new User({
+    // Enhanced user creation with validation
+    const userData = {
       name,
       email,
       password,
       role,
-      contactInfo: {
-        phone,
-        address,
-      },
+      contactInfo: { phone, address },
       profileCompleted: true,
-      donorDetails: role === "donor" ? donorDetails : undefined,
-      recipientDetails: role === "recipient" ? recipientDetails : undefined,
-      volunteerDetails: role === "volunteer" ? volunteerDetails : undefined,
-    });
+    };
 
+    // Add role-specific details with validation
+    if (role === "donor" && donorDetails) {
+      userData.donorDetails = donorDetails;
+    } else if (role === "recipient" && recipientDetails) {
+      userData.recipientDetails = {
+        ...recipientDetails,
+        verificationStatus: "pending",
+      };
+
+      // Validate recipient organization details
+      if (!recipientDetails.organizationName) {
+        return res.status(400).json({
+          success: false,
+          message: "Organization name is required for recipients",
+        });
+      }
+    } else if (role === "volunteer" && volunteerDetails) {
+      userData.volunteerDetails = {
+        ...volunteerDetails,
+        isAvailable: true,
+      };
+    }
+
+    const user = new User(userData);
     await user.save();
 
-    // Generate token
     const token = generateToken(user._id);
 
     res.status(201).json({
@@ -70,20 +93,22 @@ exports.register = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Registration error:", error);
     res.status(500).json({
       success: false,
       message: "Server error during registration",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
     });
   }
 };
 
-// Login User
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body;
 
-    // Check if email and password are provided
     if (!email || !password) {
       return res.status(400).json({
         success: false,
@@ -91,7 +116,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Find user and include password
     const user = await User.findOne({ email }).select("+password");
     if (!user) {
       return res.status(401).json({
@@ -100,7 +124,6 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Check password
     const isPasswordValid = await user.correctPassword(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -109,7 +132,10 @@ exports.login = async (req, res) => {
       });
     }
 
-    // Generate token
+    // Update last login timestamp
+    user.lastLogin = new Date();
+    await user.save();
+
     const token = generateToken(user._id);
 
     res.json({
@@ -129,18 +155,28 @@ exports.login = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Login error:", error);
     res.status(500).json({
       success: false,
       message: "Server error during login",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
     });
   }
 };
 
-// Get Current User
 exports.getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
     res.json({
       success: true,
       user: {
@@ -154,18 +190,22 @@ exports.getMe = async (req, res) => {
         donorDetails: user.donorDetails,
         recipientDetails: user.recipientDetails,
         volunteerDetails: user.volunteerDetails,
+        lastLogin: user.lastLogin,
       },
     });
   } catch (error) {
+    console.error("Get user error:", error);
     res.status(500).json({
       success: false,
       message: "Server error",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
     });
   }
 };
 
-// Complete Profile (for Google sign-in users)
 exports.completeProfile = async (req, res) => {
   try {
     const {
@@ -180,25 +220,48 @@ exports.completeProfile = async (req, res) => {
 
     const updateData = {
       role,
-      contactInfo: {
-        phone,
-        address,
-      },
+      contactInfo: { phone, address },
       profileCompleted: true,
     };
 
-    // Add role-specific details
+    // Enhanced role-specific validation
     if (role === "donor" && donorDetails) {
+      if (!donorDetails.businessName) {
+        return res.status(400).json({
+          success: false,
+          message: "Business name is required for donors",
+        });
+      }
       updateData.donorDetails = donorDetails;
     } else if (role === "recipient" && recipientDetails) {
-      updateData.recipientDetails = recipientDetails;
+      if (!recipientDetails.organizationName) {
+        return res.status(400).json({
+          success: false,
+          message: "Organization name is required for recipients",
+        });
+      }
+      updateData.recipientDetails = {
+        ...recipientDetails,
+        verificationStatus: "pending",
+      };
     } else if (role === "volunteer" && volunteerDetails) {
-      updateData.volunteerDetails = volunteerDetails;
+      updateData.volunteerDetails = {
+        ...volunteerDetails,
+        isAvailable: true,
+      };
     }
 
     const user = await User.findByIdAndUpdate(userId, updateData, {
       new: true,
+      runValidators: true,
     });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
 
     res.json({
       success: true,
@@ -216,10 +279,76 @@ exports.completeProfile = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Profile completion error:", error);
     res.status(500).json({
       success: false,
       message: "Server error during profile completion",
-      error: error.message,
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
+    });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const {
+      name,
+      phone,
+      address,
+      donorDetails,
+      recipientDetails,
+      volunteerDetails,
+    } = req.body;
+    const userId = req.user.id;
+
+    const updateData = {
+      name,
+      contactInfo: { phone, address },
+    };
+
+    // Update role-specific details
+    if (donorDetails) updateData.donorDetails = donorDetails;
+    if (recipientDetails) updateData.recipientDetails = recipientDetails;
+    if (volunteerDetails) updateData.volunteerDetails = volunteerDetails;
+
+    const user = await User.findByIdAndUpdate(userId, updateData, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        phone: user.contactInfo.phone,
+        address: user.contactInfo.address,
+        profileCompleted: user.profileCompleted,
+        donorDetails: user.donorDetails,
+        recipientDetails: user.recipientDetails,
+        volunteerDetails: user.volunteerDetails,
+      },
+    });
+  } catch (error) {
+    console.error("Update profile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error during profile update",
+      error:
+        process.env.NODE_ENV === "production"
+          ? "Internal server error"
+          : error.message,
     });
   }
 };

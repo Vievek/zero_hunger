@@ -1,66 +1,138 @@
 import 'dart:convert';
-import 'dart:math';
-import 'package:flutter/widgets.dart';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
 class ApiService {
-  // ✅ SINGLETON PATTERN
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
-  ApiService._internal(); // Private constructor
+  ApiService._internal();
 
   static const String baseUrl = 'https://zero-hunger-three.vercel.app';
   String? _authToken;
 
-  // Set authentication token
-  void setAuthToken(String token) {
-    debugPrint('🎯 setAuthToken() called with token: $token');
-    debugPrint('🎯 Token length: ${token.length}');
-    debugPrint(
-        '🎯 Token first 10 chars: ${token.substring(0, min(10, token.length))}...');
+  // Enhanced token management
+  Future<void> setAuthToken(String token) async {
+    debugPrint('🔐 SETTING AUTH TOKEN: ${token.substring(0, 10)}...');
     _authToken = token;
-    debugPrint('🎯 _authToken after set: $_authToken');
+
+    // Persist token
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('auth_token', token);
+    debugPrint('🔐 Token saved to shared preferences');
   }
 
-  // Get headers with auth
-  Map<String, String> _getHeaders() {
-    final headers = {'Content-Type': 'application/json'};
+  Future<void> loadAuthToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    _authToken = prefs.getString('auth_token');
+    debugPrint('🔐 Loaded auth token from storage: ${_authToken != null}');
+  }
 
-    debugPrint('🔐 _getHeaders() called - _authToken: $_authToken');
-    debugPrint('🔐 Full _authToken value: "$_authToken"');
-    debugPrint('🔐 _authToken is null: ${_authToken == null}');
-    debugPrint('🔐 _authToken is empty: ${_authToken?.isEmpty ?? true}');
+  Future<void> clearAuthToken() async {
+    _authToken = null;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('auth_token');
+    debugPrint('🔐 Auth token cleared');
+  }
+
+  Map<String, String> _getHeaders() {
+    final headers = {
+      'Content-Type': 'application/json',
+    };
 
     if (_authToken != null && _authToken!.isNotEmpty) {
       headers['Authorization'] = 'Bearer $_authToken';
-      debugPrint('🔐 Authorization header set: Bearer $_authToken');
+      debugPrint('🔐 Adding Authorization header to request');
     } else {
-      debugPrint(
-          '🔐 ❌ NO AUTH TOKEN AVAILABLE - Headers will not include Authorization');
+      debugPrint('🔐 No auth token available for request');
     }
 
-    debugPrint('🔐 Final headers: $headers');
     return headers;
   }
 
-  Future<AuthResponse> login(String email, String password) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/login'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode({'email': email, 'password': password}),
-    );
+  // Enhanced request method with better error handling
+  Future<dynamic> _makeRequest(
+    String method,
+    String endpoint, {
+    dynamic body,
+    bool requiresAuth = true,
+  }) async {
+    try {
+      if (requiresAuth && _authToken == null) {
+        await loadAuthToken();
+      }
 
-    debugPrint('Login response: ${response.body}');
-    debugPrint('Status code: ${response.statusCode}');
+      final url = Uri.parse('$baseUrl$endpoint');
+      final headers = _getHeaders();
 
-    if (response.statusCode == 200) {
-      final jsonResponse = json.decode(response.body);
-      return AuthResponse.fromJson(jsonResponse);
-    } else {
-      final error = json.decode(response.body);
-      throw Exception(error['message'] ?? 'Login failed');
+      debugPrint('🌐 API Request: $method $endpoint');
+      if (body != null) {
+        debugPrint('📦 Request Body: ${jsonEncode(body)}');
+      }
+
+      http.Response response;
+      switch (method) {
+        case 'GET':
+          response = await http.get(url, headers: headers);
+          break;
+        case 'POST':
+          response = await http.post(
+            url,
+            headers: headers,
+            body: body != null ? jsonEncode(body) : null,
+          );
+          break;
+        case 'PUT':
+          response = await http.put(
+            url,
+            headers: headers,
+            body: body != null ? jsonEncode(body) : null,
+          );
+          break;
+        case 'PATCH':
+          response = await http.patch(
+            url,
+            headers: headers,
+            body: body != null ? jsonEncode(body) : null,
+          );
+          break;
+        case 'DELETE':
+          response = await http.delete(url, headers: headers);
+          break;
+        default:
+          throw Exception('Unsupported HTTP method: $method');
+      }
+
+      debugPrint('🌐 API Response: ${response.statusCode} $endpoint');
+
+      final responseData = json.decode(response.body);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return responseData;
+      } else {
+        final errorMessage = responseData['message'] ??
+            responseData['error'] ??
+            'Request failed with status ${response.statusCode}';
+        throw Exception(errorMessage);
+      }
+    } catch (error) {
+      debugPrint('❌ API Error: $method $endpoint - $error');
+      rethrow;
     }
+  }
+
+  // Authentication endpoints
+  Future<AuthResponse> login(String email, String password) async {
+    final response = await _makeRequest('POST', '/auth/login',
+        body: {
+          'email': email,
+          'password': password,
+        },
+        requiresAuth: false);
+
+    return AuthResponse.fromJson(response);
   }
 
   Future<AuthResponse> register({
@@ -86,39 +158,15 @@ class ApiService {
       if (volunteerDetails != null) 'volunteerDetails': volunteerDetails,
     };
 
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/register'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode(requestBody),
-    );
+    final response = await _makeRequest('POST', '/auth/register',
+        body: requestBody, requiresAuth: false);
 
-    debugPrint('Register response: ${response.body}');
-    debugPrint('Status code: ${response.statusCode}');
-
-    if (response.statusCode == 201) {
-      final jsonResponse = json.decode(response.body);
-      return AuthResponse.fromJson(jsonResponse);
-    } else {
-      final error = json.decode(response.body);
-      throw Exception(error['message'] ?? 'Registration failed');
-    }
+    return AuthResponse.fromJson(response);
   }
 
-  Future<User> getCurrentUser(String token) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/auth/me'),
-      headers: {'Authorization': 'Bearer $token'},
-    );
-
-    debugPrint('Get user response: ${response.body}');
-    debugPrint('Status code: ${response.statusCode}');
-
-    if (response.statusCode == 200) {
-      final jsonResponse = json.decode(response.body);
-      return User.fromJson(jsonResponse['user']);
-    } else {
-      throw Exception('Failed to get user data');
-    }
+  Future<User> getCurrentUser() async {
+    final response = await _makeRequest('GET', '/auth/me');
+    return User.fromJson(response['user']);
   }
 
   Future<User> completeProfile({
@@ -130,207 +178,253 @@ class ApiService {
     Map<String, dynamic>? recipientDetails,
     Map<String, dynamic>? volunteerDetails,
   }) async {
-    final requestBody = {
+    final response =
+        await _makeRequest('POST', '/auth/complete-profile', body: {
       'role': role,
       'phone': phone,
       'address': address,
       if (donorDetails != null) 'donorDetails': donorDetails,
       if (recipientDetails != null) 'recipientDetails': recipientDetails,
       if (volunteerDetails != null) 'volunteerDetails': volunteerDetails,
-    };
+    });
 
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/complete-profile'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: json.encode(requestBody),
-    );
-    debugPrint(response.body);
-    debugPrint('Status code: ${response.statusCode}');
-
-    if (response.statusCode == 200) {
-      final jsonResponse = json.decode(response.body);
-      return User.fromJson(jsonResponse['user']);
-    } else {
-      throw Exception('Profile completion failed');
-    }
+    return User.fromJson(response['user']);
   }
 
-  // Google authentication - ADDED BACK
-  Future<AuthResponse> googleAuth(
-      String googleId, String name, String email) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/auth/google'),
-      headers: {'Content-Type': 'application/json'},
-      body: json.encode({
-        'googleId': googleId,
-        'name': name,
-        'email': email,
-      }),
-    );
-    debugPrint(response.body);
-    debugPrint('Status code: ${response.statusCode}');
+  Future<User> updateProfile({
+    String? name,
+    String? phone,
+    String? address,
+    Map<String, dynamic>? donorDetails,
+    Map<String, dynamic>? recipientDetails,
+    Map<String, dynamic>? volunteerDetails,
+  }) async {
+    final response = await _makeRequest('PATCH', '/auth/profile', body: {
+      if (name != null) 'name': name,
+      if (phone != null) 'phone': phone,
+      if (address != null) 'address': address,
+      if (donorDetails != null) 'donorDetails': donorDetails,
+      if (recipientDetails != null) 'recipientDetails': recipientDetails,
+      if (volunteerDetails != null) 'volunteerDetails': volunteerDetails,
+    });
 
-    if (response.statusCode == 200 || response.statusCode == 201) {
-      final jsonResponse = json.decode(response.body);
-      return AuthResponse.fromJson(jsonResponse);
-    } else {
-      final error = json.decode(response.body);
-      throw Exception(error['message'] ?? 'Google authentication failed');
-    }
+    return User.fromJson(response['user']);
   }
 
-  // Donation methods
+  // Donation endpoints
   Future<dynamic> createDonation(Map<String, dynamic> donationData) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/donations'),
-      headers: _getHeaders(),
-      body: json.encode(donationData),
-    );
-
-    return _handleResponse(response);
+    return await _makeRequest('POST', '/donations', body: donationData);
   }
 
   Future<dynamic> getMyDonations() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/donations/my-donations'),
-      headers: _getHeaders(),
-    );
-
-    return _handleResponse(response);
+    return await _makeRequest('GET', '/donations/my-donations');
   }
 
-  Future<dynamic> getDonationDetails(String donationId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/donations/$donationId'),
-      headers: _getHeaders(),
-    );
+  Future<dynamic> getAvailableDonations({
+    int page = 1,
+    int limit = 10,
+    String? query,
+    List<String>? categories,
+  }) async {
+    String endpoint = '/donations/available?page=$page&limit=$limit';
 
-    return _handleResponse(response);
+    if (query != null && query.isNotEmpty) {
+      endpoint += '&query=${Uri.encodeComponent(query)}';
+    }
+
+    if (categories != null && categories.isNotEmpty) {
+      endpoint += '&categories=${categories.join(',')}';
+    }
+
+    return await _makeRequest('GET', endpoint);
   }
 
   Future<dynamic> acceptDonation(String donationId) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/donations/$donationId/accept'),
-      headers: _getHeaders(),
-    );
-    return _handleResponse(response);
+    return await _makeRequest('POST', '/donations/$donationId/accept');
   }
 
-// FoodSafe AI methods
-  Future<dynamic> askFoodSafetyQuestion(
-      String question, String foodType) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/foodsafe/ask'),
-      headers: _getHeaders(),
-      body: json.encode({'question': question, 'foodType': foodType}),
-    );
-    return _handleResponse(response);
-  }
-
-  Future<dynamic> generateFoodLabel(
-      String donationId, Map<String, dynamic> data) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/foodsafe/generate-label/$donationId'),
-      headers: _getHeaders(),
-      body: json.encode(data),
-    );
-    return _handleResponse(response);
-  }
-
-  Future<dynamic> getFoodSafetyChecklist(String foodType) async {
-    final response = await http.get(
-      Uri.parse(
-          '$baseUrl/foodsafe/checklist?foodType=${Uri.encodeComponent(foodType)}'),
-      headers: _getHeaders(),
-    );
-    return _handleResponse(response);
-  }
-
-  // Logistics methods - ADDED BACK
-  Future<dynamic> getMyTasks() async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/logistics/my-tasks'),
-      headers: _getHeaders(),
-    );
-    return _handleResponse(response);
-  }
-
-  Future<dynamic> updateTaskStatus(String taskId, String status) async {
-    final response = await http.put(
-      Uri.parse('$baseUrl/logistics/$taskId/status'),
-      headers: _getHeaders(),
-      body: json.encode({'status': status}),
-    );
-    return _handleResponse(response);
-  }
-
-  Future<dynamic> getOptimizedRoute(String taskId) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl/logistics/$taskId/route'),
-      headers: _getHeaders(),
-    );
-    return _handleResponse(response);
-  }
-
-  // Image upload - SIMPLIFIED VERSION
-  Future<String> uploadImage(String imagePath) async {
-    // For now, return a placeholder URL
-    // In production, implement actual multipart upload
-    debugPrint('Image upload requested for: $imagePath');
-    return 'https://example.com/uploaded-image.jpg';
-  }
-
-  // Upload multiple images
-  Future<List<String>> uploadImages(List<String> imagePaths) async {
+  Future<dynamic> uploadImages(List<File> imageFiles) async {
     try {
-      List<String> uploadedUrls = [];
+      var request = http.MultipartRequest(
+          'POST', Uri.parse('$baseUrl/donations/upload-images'));
 
-      for (String path in imagePaths) {
-        try {
-          final url = await uploadImage(path);
-          uploadedUrls.add(url);
-        } catch (e) {
-          debugPrint('Failed to upload image $path: $e');
-          // Continue with other images even if one fails
-        }
+      // Add authorization header
+      if (_authToken != null) {
+        request.headers['Authorization'] = 'Bearer $_authToken';
       }
 
-      if (uploadedUrls.isEmpty) {
-        throw Exception('All image uploads failed');
+      // Add images
+      for (var imageFile in imageFiles) {
+        request.files.add(await http.MultipartFile.fromPath(
+          'images',
+          imageFile.path,
+        ));
       }
 
-      return uploadedUrls;
-    } catch (e) {
-      debugPrint('Batch image upload error: $e');
+      final streamedResponse = await request.send();
+      final response = await http.Response.fromStream(streamedResponse);
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return json.decode(response.body);
+      } else {
+        final errorData = json.decode(response.body);
+        throw Exception(errorData['message'] ?? 'Image upload failed');
+      }
+    } catch (error) {
+      debugPrint('Image upload error: $error');
       rethrow;
     }
   }
 
-  // Helper methods
-  Future<dynamic> _handleResponse(http.Response response) async {
-    final data = json.decode(response.body);
-    debugPrint('API Response: ${response.body}');
-    debugPrint('Status code: ${response.statusCode}');
+  Future<dynamic> getDonationDetails(String donationId) async {
+    return await _makeRequest('GET', '/donations/$donationId');
+  }
 
-    if (response.statusCode >= 200 && response.statusCode < 300) {
-      return data;
-    } else {
-      throw Exception(data['message'] ?? 'Something went wrong');
+  Future<dynamic> updateDonationStatus(String donationId, String status) async {
+    return await _makeRequest('PATCH', '/donations/$donationId/status',
+        body: {'status': status});
+  }
+
+  Future<dynamic> getDonationStats() async {
+    return await _makeRequest('GET', '/donations/stats/overview');
+  }
+
+  Future<dynamic> searchDonations(
+    String query, {
+    List<String>? categories,
+    double? maxDistance,
+  }) async {
+    String endpoint =
+        '/donations/search/available?query=${Uri.encodeComponent(query)}';
+
+    if (categories != null && categories.isNotEmpty) {
+      endpoint += '&categories=${categories.join(',')}';
     }
+
+    if (maxDistance != null) {
+      endpoint += '&maxDistance=$maxDistance';
+    }
+
+    return await _makeRequest('GET', endpoint);
+  }
+
+  // FoodSafe AI endpoints
+  Future<dynamic> askFoodSafetyQuestion(
+      String question, String foodType) async {
+    return await _makeRequest('POST', '/foodsafe/ask', body: {
+      'question': question,
+      'foodType': foodType,
+    });
+  }
+
+  Future<dynamic> generateFoodLabel(
+      String donationId, Map<String, dynamic> data) async {
+    return await _makeRequest('POST', '/foodsafe/generate-label/$donationId',
+        body: data);
+  }
+
+  Future<dynamic> getFoodSafetyChecklist([String? foodType]) async {
+    String endpoint = '/foodsafe/checklist';
+    if (foodType != null) {
+      endpoint += '?foodType=${Uri.encodeComponent(foodType)}';
+    }
+    return await _makeRequest('GET', endpoint);
+  }
+
+  Future<dynamic> getFoodSafetyQuickReference([String? foodType]) async {
+    String endpoint = '/foodsafe/quick-reference';
+    if (foodType != null) {
+      endpoint += '?foodType=${Uri.encodeComponent(foodType)}';
+    }
+    return await _makeRequest('GET', endpoint);
+  }
+
+  // Logistics endpoints
+  Future<dynamic> getMyTasks() async {
+    return await _makeRequest('GET', '/logistics/my-tasks');
+  }
+
+  Future<dynamic> updateTaskStatus(String taskId, String status) async {
+    return await _makeRequest('PUT', '/logistics/$taskId/status',
+        body: {'status': status});
+  }
+
+  Future<dynamic> getOptimizedRoute(String taskId) async {
+    return await _makeRequest('GET', '/logistics/$taskId/route');
+  }
+
+  Future<dynamic> getVolunteerStats() async {
+    return await _makeRequest('GET', '/logistics/stats/volunteer');
+  }
+
+  Future<dynamic> updateVolunteerLocation(double lat, double lng,
+      {String? address}) async {
+    return await _makeRequest('PUT', '/logistics/location/update', body: {
+      'lat': lat,
+      'lng': lng,
+      if (address != null) 'address': address,
+    });
+  }
+
+  Future<dynamic> getTaskDetails(String taskId) async {
+    return await _makeRequest('GET', '/logistics/tasks/$taskId/details');
+  }
+
+  Future<dynamic> updateSafetyChecklist(
+      String taskId, List<Map<String, dynamic>> checklist) async {
+    return await _makeRequest(
+        'PUT', '/logistics/tasks/$taskId/safety-checklist',
+        body: {'checklist': checklist});
+  }
+
+  Future<dynamic> getRouteUpdate(
+      String taskId, double currentLat, double currentLng) async {
+    return await _makeRequest('GET',
+        '/logistics/tasks/$taskId/route/update?currentLat=$currentLat&currentLng=$currentLng');
+  }
+
+  Future<dynamic> submitTaskFeedback(
+    String taskId, {
+    required int rating,
+    String? feedback,
+    int? completionTime,
+  }) async {
+    return await _makeRequest('POST', '/logistics/tasks/$taskId/feedback',
+        body: {
+          'rating': rating,
+          if (feedback != null) 'feedback': feedback,
+          if (completionTime != null) 'completionTime': completionTime,
+        });
+  }
+
+  Future<dynamic> getPerformanceMetrics() async {
+    return await _makeRequest('GET', '/logistics/performance/metrics');
+  }
+
+  // Google Auth endpoint (placeholder - implement based on your backend)
+  Future<AuthResponse> googleAuth(
+      String googleId, String displayName, String email) async {
+    // This would call your backend Google auth endpoint
+    // For now, using regular login as placeholder
+    return await login(email, 'google_auth_placeholder');
   }
 
   // Health check
   Future<bool> checkServerHealth() async {
     try {
       final response = await http.get(Uri.parse('$baseUrl/health'));
-      debugPrint('Health check: ${response.statusCode}');
       return response.statusCode == 200;
     } catch (e) {
       debugPrint('Health check error: $e');
       return false;
     }
+  }
+
+  // Enhanced error handling helper
+  String getErrorMessage(dynamic error) {
+    if (error is Exception) {
+      return error.toString().replaceFirst('Exception: ', '');
+    }
+    return error.toString();
   }
 }
