@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
+import '../providers/auth_provider.dart';
+import 'welcome_screen.dart';
 
 class RecipientDashboardScreen extends StatefulWidget {
   const RecipientDashboardScreen({super.key});
@@ -36,12 +38,47 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
       categories: _selectedCategories,
     );
   }
+  void _showLogoutDialog(BuildContext context) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Logout'),
+      content: const Text('Are you sure you want to logout?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            Navigator.pop(context);
+            Provider.of<AuthProvider>(context, listen: false).logout();
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+              (route) => false,
+            );
+          },
+          child: const Text('Logout', style: TextStyle(color: Colors.red)),
+        ),
+      ],
+    ),
+  );}
 
   @override
   Widget build(BuildContext context) {
     final donationProvider = Provider.of<DonationProvider>(context);
 
     return Scaffold(
+      appBar: AppBar(
+        title: const Text('Recipient Dashboard'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () => _showLogoutDialog(context),
+          ),
+        ],
+      ),
       body: donationProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -73,6 +110,7 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
   Widget _buildWelcomeHeader() {
     return Container(
       width: double.infinity,
+      margin: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.orange.withAlpha(25),

@@ -106,6 +106,9 @@ class ApiService {
       }
 
       debugPrint('🌐 API Response: ${response.statusCode} $endpoint');
+      if (response.body.isNotEmpty) {
+        debugPrint('📦 Response Body: ${response.body}');
+      }
 
       final responseData = json.decode(response.body);
 
