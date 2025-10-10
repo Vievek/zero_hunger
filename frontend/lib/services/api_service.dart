@@ -10,7 +10,7 @@ class ApiService {
   factory ApiService() => _instance;
   ApiService._internal();
 
-  static const String baseUrl = 'https://zero-hunger-three.vercel.app';
+  static const String baseUrl = 'https://zero-hunger-three.vercel.app/api';
   String? _authToken;
 
   // Enhanced token management
