@@ -1,5 +1,19 @@
 const mongoose = require("mongoose");
 
+// Serverless-optimized connection for Vercel + Flutter
+const options = {
+  bufferCommands: false,
+  bufferMaxEntries: 0,
+  maxPoolSize: 1, // Essential for serverless
+  minPoolSize: 1,
+  serverSelectionTimeoutMS: 15000, // Increased timeout
+  socketTimeoutMS: 45000,
+  connectTimeoutMS: 15000,
+  retryWrites: true,
+  retryReads: true,
+  waitQueueTimeoutMS: 15000,
+};
+
 // Global cache for serverless environments
 let cached = global.mongoose;
 
@@ -7,28 +21,16 @@ if (!cached) {
   cached = global.mongoose = { conn: null, promise: null };
 }
 
-// Optimized options for serverless environments
-const options = {
-  bufferCommands: false,
-  maxPoolSize: 1, // Reduced for serverless
-  minPoolSize: 1,
-  serverSelectionTimeoutMS: 30000, // Reduced from 60s
-  socketTimeoutMS: 45000,
-  connectTimeoutMS: 30000, // Reduced from 60s
-  retryWrites: true,
-  retryReads: true,
-};
-
 async function connectDB() {
-  // Return cached connection if available
-  if (cached.conn) {
-    console.log("Using cached MongoDB connection");
+  // If we have a cached connection and it's connected, return it
+  if (cached.conn && mongoose.connection.readyState === 1) {
+    console.log("✅ Using cached MongoDB connection");
     return cached.conn;
   }
 
   // If no connection promise exists, create one
   if (!cached.promise) {
-    console.log("Creating new MongoDB connection...");
+    console.log("🔄 Creating new MongoDB connection...");
 
     const opts = {
       ...options,
@@ -52,35 +54,29 @@ async function connectDB() {
     return cached.conn;
   } catch (error) {
     cached.promise = null;
+    console.error("❌ Database connection error:", error);
     throw error;
   }
 }
 
-// Connection event handlers
+// Enhanced connection event handlers
 mongoose.connection.on("connected", () => {
-  console.log("Mongoose connected to MongoDB");
+  console.log("✅ Mongoose connected to MongoDB");
 });
 
 mongoose.connection.on("error", (err) => {
-  console.error("Mongoose connection error:", err);
+  console.error("❌ Mongoose connection error:", err);
 });
 
 mongoose.connection.on("disconnected", () => {
-  console.log("Mongoose disconnected from MongoDB");
+  console.log("⚠️ Mongoose disconnected from MongoDB");
 });
 
-// Handle serverless function shutdown
-if (process.env.NODE_ENV === "production") {
-  process.on("SIGTERM", async () => {
-    console.log("SIGTERM received, closing MongoDB connection");
-    try {
-      await mongoose.connection.close();
-      console.log("MongoDB connection closed");
-    } catch (error) {
-      console.error("Error closing MongoDB connection:", error);
-    }
-    process.exit(0);
-  });
-}
+// Handle application termination
+process.on("SIGINT", async () => {
+  await mongoose.connection.close();
+  console.log("MongoDB connection closed through app termination");
+  process.exit(0);
+});
 
 module.exports = connectDB;
