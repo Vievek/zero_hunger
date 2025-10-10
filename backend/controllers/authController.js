@@ -106,6 +106,7 @@ exports.register = async (req, res) => {
 };
 
 exports.login = async (req, res) => {
+  console.log("Login endpoint hit");
   try {
     const { email, password } = req.body;
 

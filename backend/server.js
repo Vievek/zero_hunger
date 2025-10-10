@@ -8,13 +8,11 @@ const passport = require("passport");
 
 const app = express();
 
-// Middleware
+// Basic middleware
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "*",
     credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
   })
 );
 
@@ -25,97 +23,48 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 require("./config/passport")(passport);
 app.use(passport.initialize());
 
-// Database connection management
-let dbConnected = false;
-
-const connectDBLazily = async () => {
-  if (!dbConnected) {
-    try {
-      const connectDB = require("./config/database");
-      await connectDB();
-      dbConnected = true;
-    } catch (error) {
-      console.error("Database connection failed:", error.message);
-      dbConnected = false;
-    }
-  }
-  return dbConnected;
-};
-
-// Initialize database connection on startup for development
-const initDatabase = async () => {
-  if (process.env.NODE_ENV !== "production") {
-    console.log("Initializing database connection...");
-    await connectDBLazily();
-  }
-};
-
-// Routes with lazy database connection
-const routes = [
-  { path: "./routes/auth", mount: "/api/auth", name: "Auth Routes" },
-  {
-    path: "./routes/donations",
-    mount: "/api/donations",
-    name: "Donation Routes",
-  },
-  {
-    path: "./routes/foodsafe",
-    mount: "/api/foodsafe",
-    name: "FoodSafe Routes",
-  },
-  {
-    path: "./routes/logistics",
-    mount: "/api/logistics",
-    name: "Logistics Routes",
-  },
-  { path: "./routes/admin", mount: "/api/admin", name: "Admin Routes" },
-];
-
-// Mount routes
-routes.forEach((route) => {
+// Simple database connection
+const connectDB = async () => {
   try {
-    const routeModule = require(route.path);
-    app.use(route.mount, routeModule);
-    console.log(`✅ ${route.name} mounted at ${route.mount}`);
-  } catch (error) {
-    console.error(`❌ Failed to mount ${route.name}:`, error.message);
-    // Create placeholder route
-    app.use(route.mount, (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: `${route.name} temporarily unavailable`,
-      });
-    });
-  }
-});
-
-// Health check with database connection test
-app.get("/api/health", async (req, res) => {
-  const dbStatus =
-    mongoose.connection.readyState === 1 ? "connected" : "disconnected";
-
-  let dbHealthy = false;
-  if (mongoose.connection.readyState === 1) {
-    try {
-      await mongoose.connection.db.admin().ping();
-      dbHealthy = true;
-    } catch (error) {
-      dbHealthy = false;
+    if (mongoose.connection.readyState === 1) {
+      return true;
     }
+
+    await mongoose.connect(process.env.MONGODB_URI, {
+      bufferCommands: false,
+      maxPoolSize: 10,
+    });
+    console.log("✅ MongoDB connected");
+    return true;
+  } catch (error) {
+    console.error("❌ MongoDB connection failed:", error.message);
+    return false;
   }
+};
+
+// Simple route mounting - remove all complex logic
+try {
+  app.use("/api/auth", require("./routes/auth"));
+  app.use("/api/donations", require("./routes/donations"));
+  app.use("/api/foodsafe", require("./routes/foodsafe"));
+  app.use("/api/logistics", require("./routes/logistics"));
+  app.use("/api/admin", require("./routes/admin"));
+  console.log("✅ All routes mounted successfully");
+} catch (error) {
+  console.error("❌ Route mounting failed:", error);
+}
+
+// Simple health check
+app.get("/api/health", async (req, res) => {
+  const dbConnected = mongoose.connection.readyState === 1;
 
   res.json({
     success: true,
-    status: dbHealthy ? "healthy" : "degraded",
+    status: dbConnected ? "healthy" : "degraded",
     message: `Server running, database ${
-      dbHealthy ? "connected" : "disconnected"
+      dbConnected ? "connected" : "disconnected"
     }`,
     timestamp: new Date().toISOString(),
-    database: {
-      state: mongoose.connection.readyState,
-      status: dbStatus,
-      healthy: dbHealthy,
-    },
   });
 });
 
@@ -133,27 +82,29 @@ app.use("*", (req, res) => {
   res.status(404).json({
     success: false,
     message: "Route not found",
-    path: req.originalUrl,
   });
 });
 
 // Global error handler
 app.use((error, req, res, next) => {
-  console.error("Global error:", error);
+  console.error("Error:", error);
   res.status(500).json({
     success: false,
     message: "Internal server error",
-    error: process.env.NODE_ENV === "production" ? {} : error.message,
   });
 });
 
-// Only start server if not in Vercel
+// Start server only if not in Vercel
 if (process.env.VERCEL !== "1") {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
-    // Initialize database connection after server starts
-    await initDatabase();
+    // Try to connect to DB but don't block server start
+    connectDB().then((connected) => {
+      if (connected) {
+        console.log("✅ Database connected on startup");
+      }
+    });
   });
 }
 
