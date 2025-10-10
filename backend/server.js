@@ -2,6 +2,7 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const passport = require("passport");
+const path = require("path");
 require("dotenv").config();
 
 // Import database connection
@@ -52,13 +53,17 @@ const initializeDatabase = async () => {
 
 // Import and mount routes with detailed error handling
 console.log("🛣️  Setting up routes...");
+console.log("📂 Current directory:", __dirname);
+console.log("📂 Routes directory:", path.join(__dirname, "routes"));
 
 const loadAndMountRoute = (routePath, mountPath, routeName) => {
   try {
     console.log(`   🔍 Loading ${routeName} from ${routePath}...`);
+    console.log("   📂 Checking if path exists...");
 
     // For serverless, we need to handle dynamic imports differently
     const routeModule = require(routePath);
+    console.log("   ✅ Module loaded successfully");
 
     // Check if it's a valid router
     if (typeof routeModule !== "function") {
@@ -90,23 +95,31 @@ const loadAndMountRoute = (routePath, mountPath, routeName) => {
 
 // Mount routes - make sure these files exist in your deployment
 const routes = [
-  { path: "./routes/auth", mount: "/api/auth", name: "Auth Routes" },
   {
-    path: "./routes/donations",
+    path: path.join(__dirname, "routes/auth"),
+    mount: "/api/auth",
+    name: "Auth Routes",
+  },
+  {
+    path: path.join(__dirname, "routes/donations"),
     mount: "/api/donations",
     name: "Donation Routes",
   },
   {
-    path: "./routes/foodsafe",
+    path: path.join(__dirname, "routes/foodsafe"),
     mount: "/api/foodsafe",
     name: "FoodSafe Routes",
   },
   {
-    path: "./routes/logistics",
+    path: path.join(__dirname, "routes/logistics"),
     mount: "/api/logistics",
     name: "Logistics Routes",
   },
-  { path: "./routes/admin", mount: "/api/admin", name: "Admin Routes" },
+  {
+    path: path.join(__dirname, "routes/admin"),
+    mount: "/api/admin",
+    name: "Admin Routes",
+  },
 ];
 
 let successfulMounts = 0;
