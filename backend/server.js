@@ -2,18 +2,10 @@ const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
 const passport = require("passport");
-const path = require("path");
-require("dotenv").config();
-
-// Import database connection
-const connectDB = require("./config/database");
 
 const app = express();
 
-console.log("🚀 Starting Zero Hunger Backend Server...");
-console.log("📁 Environment:", process.env.NODE_ENV || "development");
-
-// Enhanced CORS configuration
+// Middleware
 app.use(
   cors({
     origin: process.env.FRONTEND_URL || "*",
@@ -23,162 +15,97 @@ app.use(
   })
 );
 
-console.log("🔧 CORS configured");
-
-// Enhanced body parsing middleware
 app.use(express.json({ limit: "50mb" }));
 app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
-console.log("📦 Body parsing middleware configured");
-
-// Passport config
-console.log("🔐 Initializing Passport...");
+// Passport
 require("./config/passport")(passport);
 app.use(passport.initialize());
-console.log("✅ Passport initialized");
 
-// Database connection with retry logic for serverless
-console.log("🗄️  Connecting to database...");
+// Lazy database connection - don't connect on cold start
+let dbConnected = false;
 
-const initializeDatabase = async () => {
-  try {
-    await connectDB();
-    console.log("✅ Database connection established");
-    return true;
-  } catch (error) {
-    console.error("❌ Database connection failed:", error);
-    return false;
+const connectDBLazily = async () => {
+  if (!dbConnected) {
+    try {
+      const connectDB = require("./config/database");
+      await connectDB();
+      dbConnected = true;
+    } catch (error) {
+      console.error("Database connection failed:", error.message);
+      dbConnected = false;
+    }
   }
+  return dbConnected;
 };
 
-// Import and mount routes with detailed error handling
-console.log("🛣️  Setting up routes...");
-console.log("📂 Current directory:", __dirname);
-console.log("📂 Routes directory:", path.join(__dirname, "routes"));
-
-const loadAndMountRoute = (routePath, mountPath, routeName) => {
-  try {
-    console.log(`   🔍 Loading ${routeName} from ${routePath}...`);
-    console.log("   📂 Checking if path exists...");
-
-    // For serverless, we need to handle dynamic imports differently
-    const routeModule = require(routePath);
-    console.log("   ✅ Module loaded successfully");
-
-    // Check if it's a valid router
-    if (typeof routeModule !== "function") {
-      throw new Error(`Expected function but got ${typeof routeModule}`);
-    }
-
-    if (!routeModule.stack && !routeModule.handle) {
-      throw new Error(`Not a valid Express router`);
-    }
-
-    app.use(mountPath, routeModule);
-    console.log(`   ✅ ${routeName} mounted at ${mountPath}`);
-    return true;
-  } catch (error) {
-    console.error(`   ❌ Failed to mount ${routeName}:`, error.message);
-
-    // Create a placeholder route for health checks
-    app.use(mountPath, (req, res) => {
-      res.status(503).json({
-        success: false,
-        message: `${routeName} temporarily unavailable`,
-        error: "Route loading failed",
-      });
-    });
-
-    return false;
-  }
-};
-
-// Mount routes - make sure these files exist in your deployment
+// Routes with lazy database connection
 const routes = [
+  { path: "./routes/auth", mount: "/api/auth", name: "Auth Routes" },
   {
-    path: path.join(__dirname, "routes/auth"),
-    mount: "/api/auth",
-    name: "Auth Routes",
-  },
-  {
-    path: path.join(__dirname, "routes/donations"),
+    path: "./routes/donations",
     mount: "/api/donations",
     name: "Donation Routes",
   },
   {
-    path: path.join(__dirname, "routes/foodsafe"),
+    path: "./routes/foodsafe",
     mount: "/api/foodsafe",
     name: "FoodSafe Routes",
   },
   {
-    path: path.join(__dirname, "routes/logistics"),
+    path: "./routes/logistics",
     mount: "/api/logistics",
     name: "Logistics Routes",
   },
-  {
-    path: path.join(__dirname, "routes/admin"),
-    mount: "/api/admin",
-    name: "Admin Routes",
-  },
+  { path: "./routes/admin", mount: "/api/admin", name: "Admin Routes" },
 ];
 
-let successfulMounts = 0;
+// Mount routes
 routes.forEach((route) => {
-  if (loadAndMountRoute(route.path, route.mount, route.name)) {
-    successfulMounts++;
+  try {
+    const routeModule = require(route.path);
+    app.use(route.mount, routeModule);
+    console.log(`✅ ${route.name} mounted at ${route.mount}`);
+  } catch (error) {
+    console.error(`❌ Failed to mount ${route.name}:`, error.message);
+    // Create placeholder route
+    app.use(route.mount, (req, res) => {
+      res.status(503).json({
+        success: false,
+        message: `${route.name} temporarily unavailable`,
+      });
+    });
   }
 });
 
-console.log(
-  `📊 Route Loading Summary: ${successfulMounts}/${routes.length} routes mounted successfully`
-);
-
-// Health check endpoint with database status
+// Health check with database connection test
 app.get("/api/health", async (req, res) => {
-  try {
-    const connectionState = mongoose.connection.readyState;
-    const dbStatus = connectionState === 1 ? "connected" : "disconnected";
+  const dbStatus =
+    mongoose.connection.readyState === 1 ? "connected" : "disconnected";
 
-    // Test database connection if not connected
-    let dbHealthy = false;
-    if (connectionState === 1) {
-      try {
-        // Simple query to test connection
-        await mongoose.connection.db.admin().ping();
-        dbHealthy = true;
-      } catch (pingError) {
-        console.error("Database ping failed:", pingError);
-        dbHealthy = false;
-      }
+  let dbHealthy = false;
+  if (mongoose.connection.readyState === 1) {
+    try {
+      await mongoose.connection.db.admin().ping();
+      dbHealthy = true;
+    } catch (error) {
+      dbHealthy = false;
     }
-
-    res.json({
-      success: true,
-      status: dbHealthy ? "healthy" : "degraded",
-      message: `Server is running, database is ${
-        dbHealthy ? "connected" : "disconnected"
-      }`,
-      timestamp: new Date().toISOString(),
-      database: {
-        state: connectionState,
-        status: dbStatus,
-        healthy: dbHealthy,
-      },
-      routes: {
-        total: routes.length,
-        loaded: successfulMounts,
-        failed: routes.length - successfulMounts,
-      },
-      environment: process.env.NODE_ENV || "development",
-    });
-  } catch (error) {
-    res.status(500).json({
-      success: false,
-      status: "unhealthy",
-      message: "Health check failed",
-      error: process.env.NODE_ENV === "production" ? {} : error.message,
-    });
   }
+
+  res.json({
+    success: true,
+    status: dbHealthy ? "healthy" : "degraded",
+    message: `Server running, database ${
+      dbHealthy ? "connected" : "disconnected"
+    }`,
+    timestamp: new Date().toISOString(),
+    database: {
+      state: mongoose.connection.readyState,
+      status: dbStatus,
+      healthy: dbHealthy,
+    },
+  });
 });
 
 // Root endpoint
@@ -187,15 +114,6 @@ app.get("/", (req, res) => {
     message: "Zero Hunger API is running",
     version: "1.0.0",
     timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV || "development",
-    endpoints: {
-      auth: "/api/auth",
-      donations: "/api/donations",
-      foodsafe: "/api/foodsafe",
-      logistics: "/api/logistics",
-      admin: "/api/admin",
-      health: "/api/health",
-    },
   });
 });
 
@@ -210,7 +128,7 @@ app.use("*", (req, res) => {
 
 // Global error handler
 app.use((error, req, res, next) => {
-  console.error("💥 Global error handler:", error);
+  console.error("Global error:", error);
   res.status(500).json({
     success: false,
     message: "Internal server error",
@@ -218,19 +136,11 @@ app.use((error, req, res, next) => {
   });
 });
 
-// Initialize database on startup
-initializeDatabase();
-
-// Only start listening if not in serverless environment
-if (process.env.NODE_ENV !== "production" || process.env.VERCEL !== "1") {
+// Only start server if not in Vercel
+if (process.env.VERCEL !== "1") {
   const PORT = process.env.PORT || 5000;
   app.listen(PORT, () => {
-    console.log("=".repeat(50));
-    console.log(`🎉 Zero Hunger Backend Server Started!`);
-    console.log(`📍 Port: ${PORT}`);
-    console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
-    console.log(`📊 Routes: ${successfulMounts}/${routes.length} loaded`);
-    console.log("=".repeat(50));
+    console.log(`Server running on port ${PORT}`);
   });
 }
 
