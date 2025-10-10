@@ -2,8 +2,7 @@ const mongoose = require("mongoose");
 
 const options = {
   bufferCommands: false,
-  bufferMaxEntries: 0,
-  maxPoolSize: 5, // Increase pool size to allow concurrency
+  maxPoolSize: 5,
   minPoolSize: 1,
   serverSelectionTimeoutMS: 15000,
   socketTimeoutMS: 45000,
@@ -21,16 +20,25 @@ if (!cached) {
 
 async function connectDB() {
   if (cached.conn && mongoose.connection.readyState === 1) {
-    // Use cached connection if available and connected
     return cached.conn;
   }
 
   if (!cached.promise) {
+    const MONGODB_URI = process.env.MONGODB_URI;
+
+    if (!MONGODB_URI) {
+      throw new Error("Please define the MONGODB_URI environment variable");
+    }
+
     cached.promise = mongoose
-      .connect(process.env.MONGODB_URI, options)
-      .then((mongoose) => mongoose)
+      .connect(MONGODB_URI, options)
+      .then((mongoose) => {
+        console.log("✅ MongoDB connected successfully");
+        return mongoose;
+      })
       .catch((err) => {
         cached.promise = null;
+        console.error("❌ MongoDB connection error:", err);
         throw err;
       });
   }
@@ -39,11 +47,24 @@ async function connectDB() {
   return cached.conn;
 }
 
-// Properly handle process termination in Vercel environment (optional)
+// Handle connection events
+mongoose.connection.on("connected", () => {
+  console.log("✅ Mongoose connected to MongoDB");
+});
+
+mongoose.connection.on("error", (err) => {
+  console.error("❌ Mongoose connection error:", err);
+});
+
+mongoose.connection.on("disconnected", () => {
+  console.log("⚠️ Mongoose disconnected from MongoDB");
+});
+
+// Properly handle process termination
 process.on("SIGINT", async () => {
   if (mongoose.connection.readyState === 1) {
     await mongoose.connection.close();
-    console.log("MongoDB connection closed");
+    console.log("MongoDB connection closed through app termination");
   }
   process.exit(0);
 });
