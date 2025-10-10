@@ -1,10 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
-import 'donor_dashboard.dart';
-import 'recipient_dashboard_screen.dart';
-import 'volunteer_dashboard_screen.dart';
-import 'admin_dashboard_screen.dart';
+import '../widgets/role_bottom_navbar.dart';
 import 'welcome_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -15,23 +12,13 @@ class DashboardScreen extends StatelessWidget {
     final authProvider = Provider.of<AuthProvider>(context);
     final user = authProvider.user;
 
-    // Navigate to role-specific dashboard
-    Widget getRoleSpecificDashboard() {
-      switch (user?.role) {
-        case 'donor':
-          return const DonorDashboardScreen();
-        case 'recipient':
-          return const RecipientDashboardScreen();
-        case 'volunteer':
-          return const VolunteerDashboardScreen();
-        case 'admin':
-          return const AdminDashboardScreen();
-        default:
-          return _buildDefaultDashboard(context);
-      }
+    // If user profile is not completed, show default dashboard
+    if (user == null || !user.profileCompleted) {
+      return _buildDefaultDashboard(context);
     }
 
-    return getRoleSpecificDashboard();
+    // Use role-based bottom navigation for completed profiles
+    return const RoleBottomNavBar();
   }
 
   Widget _buildDefaultDashboard(BuildContext context) {
@@ -46,9 +33,25 @@ class DashboardScreen extends StatelessWidget {
         ],
       ),
       body: const Center(
-        child: Text(
-          'Welcome to Zero Hunger!',
-          style: TextStyle(fontSize: 18, color: Colors.grey),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.warning, size: 64, color: Colors.orange),
+            SizedBox(height: 16),
+            Text(
+              'Profile Incomplete',
+              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 32),
+              child: Text(
+                'Please complete your profile to access all features',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+            ),
+          ],
         ),
       ),
     );
