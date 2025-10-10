@@ -3,22 +3,20 @@ import '../models/donation_model.dart';
 import '../services/api_service.dart';
 
 class DonationProvider with ChangeNotifier {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService =
+      ApiService(); // ✅ Now shares singleton instance
 
   List<Donation> _donations = [];
   bool _isLoading = false;
   String? _error;
-  final Map<String, bool> _processingDonations = {}; // Made final
+  final Map<String, bool> _processingDonations = {};
 
   List<Donation> get donations => _donations;
   bool get isLoading => _isLoading;
   String? get error => _error;
   Map<String, bool> get processingDonations => _processingDonations;
 
-  // Set auth token for API service
-  void setAuthToken(String token) {
-    _apiService.setAuthToken(token);
-  }
+  // ❌ REMOVED setAuthToken method - No longer needed with singleton
 
   Future<void> createDonation(
       Donation donation, List<String> imagePaths) async {
@@ -66,6 +64,10 @@ class DonationProvider with ChangeNotifier {
       _isLoading = true;
       _error = null;
       notifyListeners();
+      debugPrint('📦 fetchMyDonations() called');
+
+      // ✅ Check if we have the auth token in this ApiService instance
+      debugPrint('📦 About to call _apiService.getMyDonations()');
 
       final response = await _apiService.getMyDonations();
       _donations = (response['data']['donations'] as List)
@@ -78,6 +80,7 @@ class DonationProvider with ChangeNotifier {
       _isLoading = false;
       notifyListeners();
     } catch (error) {
+      debugPrint('📦 ❌ fetchMyDonations ERROR: $error');
       _isLoading = false;
       _error = error.toString();
       notifyListeners();

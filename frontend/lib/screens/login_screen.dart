@@ -47,13 +47,24 @@ class _LoginScreenState extends State<LoginScreen> {
   void _navigateAfterAuth() {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
 
+    debugPrint('🧭 _navigateAfterAuth() called');
+    debugPrint('🧭 AuthProvider token: ${authProvider.token}');
+    debugPrint(
+        '🧭 AuthProvider isAuthenticated: ${authProvider.isAuthenticated}');
+
+    // ✅ NO NEED to manually propagate tokens - ApiService is now singleton!
+    debugPrint(
+        '🧭 ApiService is singleton - token automatically available to all providers');
+
     if (authProvider.needsProfileCompletion) {
+      debugPrint('🧭 Navigating to ProfileCompletionScreen');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
             builder: (context) => const ProfileCompletionScreen()),
       );
     } else {
+      debugPrint('🧭 Navigating to DashboardScreen');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (context) => const DashboardScreen()),

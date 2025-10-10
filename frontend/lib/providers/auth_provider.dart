@@ -30,7 +30,19 @@ class AuthProvider with ChangeNotifier {
       final authData = await _storageService.getAuthData();
       if (authData != null) {
         _token = authData['token'];
+         debugPrint('🔄 LOGIN SUCCESS - Token received: $_token');
+        debugPrint('🔄 Token length: ${_token?.length}');
 
+        // ✅ Set the token in ApiService
+        if (_token != null) {
+          debugPrint('🔄 Calling _apiService.setAuthToken()');
+          _apiService.setAuthToken(_token!);
+
+          // ✅ VERIFY it was set
+          debugPrint('🔄 Verifying token was set in ApiService...');
+        } else {
+          debugPrint('🔄 ❌ CRITICAL: _token is NULL after login!');
+        }
         // Verify token by getting user data
         final user = await _apiService.getCurrentUser(_token!);
         _user = user;
@@ -62,6 +74,20 @@ class AuthProvider with ChangeNotifier {
       _user = authResponse.user;
       _token = authResponse.token;
       _isAuthenticated = true;
+
+      debugPrint('🔄 LOGIN SUCCESS - Token received: $_token');
+      debugPrint('🔄 Token length: ${_token?.length}');
+
+      // ✅ Set the token in ApiService
+      if (_token != null) {
+        debugPrint('🔄 Calling _apiService.setAuthToken()');
+        _apiService.setAuthToken(_token!);
+
+        // ✅ VERIFY it was set
+        debugPrint('🔄 Verifying token was set in ApiService...');
+      } else {
+        debugPrint('🔄 ❌ CRITICAL: _token is NULL after login!');
+      }
 
       if (saveLogin) {
         await _storageService.saveAuthData(
@@ -113,7 +139,19 @@ class AuthProvider with ChangeNotifier {
       _user = authResponse.user;
       _token = authResponse.token;
       _isAuthenticated = true;
+      debugPrint('🔄 REGISTER SUCCESS - Token received: $_token');
+      debugPrint('🔄 Token length: ${_token?.length}');
 
+      // ✅ Set the token in ApiService
+      if (_token != null) {
+        debugPrint('🔄 Calling _apiService.setAuthToken()');
+        _apiService.setAuthToken(_token!);
+
+        // ✅ VERIFY it was set
+        debugPrint('🔄 Verifying token was set in ApiService...');
+      } else {
+        debugPrint('🔄 ❌ CRITICAL: _token is NULL after login!');
+      }
       if (saveLogin) {
         await _storageService.saveAuthData(
           _token!,
@@ -154,6 +192,19 @@ class AuthProvider with ChangeNotifier {
       _user = authResponse.user;
       _token = authResponse.token;
       _isAuthenticated = true;
+      debugPrint('🔄 LOGIN SUCCESS - Token received: $_token');
+      debugPrint('🔄 Token length: ${_token?.length}');
+
+      // ✅ Set the token in ApiService
+      if (_token != null) {
+        debugPrint('🔄 Calling _apiService.setAuthToken()');
+        _apiService.setAuthToken(_token!);
+
+        // ✅ VERIFY it was set
+        debugPrint('🔄 Verifying token was set in ApiService...');
+      } else {
+        debugPrint('🔄 ❌ CRITICAL: _token is NULL after login!');
+      }
 
       if (saveLogin) {
         await _storageService.saveAuthData(

@@ -1,23 +1,46 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
 import '../models/user_model.dart';
 
 class ApiService {
+  // ✅ SINGLETON PATTERN
+  static final ApiService _instance = ApiService._internal();
+  factory ApiService() => _instance;
+  ApiService._internal(); // Private constructor
+
   static const String baseUrl = 'https://zero-hunger-three.vercel.app';
   String? _authToken;
 
   // Set authentication token
   void setAuthToken(String token) {
+    debugPrint('🎯 setAuthToken() called with token: $token');
+    debugPrint('🎯 Token length: ${token.length}');
+    debugPrint(
+        '🎯 Token first 10 chars: ${token.substring(0, min(10, token.length))}...');
     _authToken = token;
+    debugPrint('🎯 _authToken after set: $_authToken');
   }
 
   // Get headers with auth
   Map<String, String> _getHeaders() {
     final headers = {'Content-Type': 'application/json'};
-    if (_authToken != null) {
+
+    debugPrint('🔐 _getHeaders() called - _authToken: $_authToken');
+    debugPrint('🔐 Full _authToken value: "$_authToken"');
+    debugPrint('🔐 _authToken is null: ${_authToken == null}');
+    debugPrint('🔐 _authToken is empty: ${_authToken?.isEmpty ?? true}');
+
+    if (_authToken != null && _authToken!.isNotEmpty) {
       headers['Authorization'] = 'Bearer $_authToken';
+      debugPrint('🔐 Authorization header set: Bearer $_authToken');
+    } else {
+      debugPrint(
+          '🔐 ❌ NO AUTH TOKEN AVAILABLE - Headers will not include Authorization');
     }
+
+    debugPrint('🔐 Final headers: $headers');
     return headers;
   }
 

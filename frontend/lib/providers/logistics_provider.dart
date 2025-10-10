@@ -3,7 +3,8 @@ import '../models/logistics_model.dart';
 import '../services/api_service.dart';
 
 class LogisticsProvider with ChangeNotifier {
-  final ApiService _apiService = ApiService();
+  final ApiService _apiService =
+      ApiService(); // ✅ Now shares singleton instance
 
   List<LogisticsTask> _tasks = [];
   bool _isLoading = false;
@@ -12,6 +13,8 @@ class LogisticsProvider with ChangeNotifier {
   List<LogisticsTask> get tasks => _tasks;
   bool get isLoading => _isLoading;
   String? get error => _error;
+
+  // ❌ REMOVED setAuthToken method - No longer needed with singleton
 
   Future<void> fetchMyTasks() async {
     try {
