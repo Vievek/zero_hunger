@@ -15,9 +15,6 @@ const options = {
   serverSelectionTimeoutMS: 30000, // Reduced from 60s
   socketTimeoutMS: 45000,
   connectTimeoutMS: 30000, // Reduced from 60s
-  family: 4, // Force IPv4
-  keepAlive: true,
-  keepAliveInitialDelay: 300000,
   retryWrites: true,
   retryReads: true,
 };
@@ -35,9 +32,6 @@ async function connectDB() {
 
     const opts = {
       ...options,
-      bufferMaxEntries: 0,
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
     };
 
     cached.promise = mongoose

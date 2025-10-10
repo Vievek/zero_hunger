@@ -1,3 +1,6 @@
+// Load environment variables
+require("dotenv").config();
+
 const express = require("express");
 const mongoose = require("mongoose");
 const cors = require("cors");
@@ -22,7 +25,7 @@ app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 require("./config/passport")(passport);
 app.use(passport.initialize());
 
-// Lazy database connection - don't connect on cold start
+// Database connection management
 let dbConnected = false;
 
 const connectDBLazily = async () => {
@@ -37,6 +40,14 @@ const connectDBLazily = async () => {
     }
   }
   return dbConnected;
+};
+
+// Initialize database connection on startup for development
+const initDatabase = async () => {
+  if (process.env.NODE_ENV !== "production") {
+    console.log("Initializing database connection...");
+    await connectDBLazily();
+  }
 };
 
 // Routes with lazy database connection
@@ -139,8 +150,10 @@ app.use((error, req, res, next) => {
 // Only start server if not in Vercel
 if (process.env.VERCEL !== "1") {
   const PORT = process.env.PORT || 5000;
-  app.listen(PORT, () => {
+  app.listen(PORT, async () => {
     console.log(`Server running on port ${PORT}`);
+    // Initialize database connection after server starts
+    await initDatabase();
   });
 }
 
