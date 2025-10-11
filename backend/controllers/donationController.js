@@ -6,6 +6,7 @@ const matchingService = require("../services/matchingService");
 const routeOptimizationService = require("../services/routeOptimizationService");
 const notificationService = require("../services/notificationService");
 const cloudinary = require("../config/cloudinary");
+const mongoose = require("mongoose");
 
 // Helper function to calculate handling window
 function calculateHandlingWindow(freshnessScore, urgency) {
@@ -500,65 +501,30 @@ exports.updateDonationStatus = async (req, res) => {
 exports.getDonationStats = async (req, res) => {
   try {
     const userId = req.user.id;
-    console.log("Fetching donation stats for user:", userId);
 
-    if (!userId) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID is required",
-      });
-    }
+    // Simple approach using Mongoose find()
+    const donations = await Donation.find({ donor: userId });
 
-    const stats = await Donation.aggregate([
-      {
-        $match: {
-          donor: new mongoose.Types.ObjectId(userId),
-        },
-      },
-      {
-        $group: {
-          _id: null,
-          totalDonations: { $sum: 1 },
-          totalQuantity: { $sum: "$quantity.amount" },
-          activeDonations: {
-            $sum: {
-              $cond: [
-                { $in: ["$status", ["active", "matched", "scheduled"]] },
-                1,
-                0,
-              ],
-            },
-          },
-          completedDonations: {
-            $sum: { $cond: [{ $eq: ["$status", "delivered"] }, 1, 0] },
-          },
-          totalImpact: {
-            $sum: {
-              $cond: [{ $eq: ["$status", "delivered"] }, "$quantity.amount", 0],
-            },
-          },
-        },
-      },
-    ]);
-
-    const result = stats[0] || {
-      totalDonations: 0,
-      totalQuantity: 0,
-      activeDonations: 0,
-      completedDonations: 0,
-      totalImpact: 0,
+    const stats = {
+      totalDonations: donations.length,
+      totalQuantity: donations.reduce(
+        (sum, d) => sum + (d.quantity?.amount || 0),
+        0
+      ),
+      activeDonations: donations.filter((d) =>
+        ["active", "matched", "scheduled"].includes(d.status)
+      ).length,
+      completedDonations: donations.filter((d) => d.status === "delivered")
+        .length,
+      totalImpact: donations
+        .filter((d) => d.status === "delivered")
+        .reduce((sum, d) => sum + (d.quantity?.amount || 0), 0),
     };
 
-    res.json({
-      success: true,
-      data: result,
-    });
+    res.json({ success: true, data: stats });
   } catch (error) {
     console.error("Get donation stats error:", error);
-    res.status(500).json({
-      success: false,
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
