@@ -502,10 +502,17 @@ exports.getDonationStats = async (req, res) => {
     const userId = req.user.id;
     console.log("Fetching donation stats for user:", userId);
 
+    if (!userId) {
+      return res.status(400).json({
+        success: false,
+        message: "User ID is required",
+      });
+    }
+
     const stats = await Donation.aggregate([
       {
         $match: {
-          donor: mongoose.Types.ObjectId.createFromHexString(userId),
+          donor: new mongoose.Types.ObjectId(userId),
         },
       },
       {
