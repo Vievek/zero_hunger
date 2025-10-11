@@ -5,12 +5,7 @@ const { auth, requireRole } = require("../middleware/auth");
 
 console.log("🔧 Loading Recipient routes...");
 
-// Debug middleware
-router.use((req, res, next) => {
-  console.log("🔐 Recipient route accessed by:", req.user.id, req.user.role);
-  console.log("📋 Request path:", req.path);
-  next();
-});
+
 // Apply authentication and role check to all routes
 router.use(auth);
 router.use(requireRole(["recipient"]));
