@@ -69,6 +69,9 @@ class DonationProvider with ChangeNotifier {
       if (response['success'] == true) {
         final newDonation = Donation.fromJson(response['data']);
         debugPrint('🌐 New Donation Created: ${newDonation.id}');
+        debugPrint('🤖 AI Description: ${newDonation.aiDescription}');
+        debugPrint('🏷️ AI Categories: ${newDonation.categories}');
+        debugPrint('📝 Response Message: ${response['message']}');
 
         _donations.insert(0, newDonation);
         _processingDonations[newDonation.id!] = true;

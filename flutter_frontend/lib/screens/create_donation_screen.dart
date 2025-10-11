@@ -372,17 +372,19 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   }
 
   Widget _buildLoadingState() {
-    return const Center(
+    return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          CircularProgressIndicator(),
-          SizedBox(height: 20),
-          Text('Creating your donation...'),
-          SizedBox(height: 10),
+          const CircularProgressIndicator(),
+          const SizedBox(height: 20),
+          const Text('Creating your donation...'),
+          const SizedBox(height: 10),
           Text(
-            'AI is analyzing your food images and finding the best matches',
-            style: TextStyle(color: Colors.grey),
+            _selectedImages.isNotEmpty
+                ? 'AI is analyzing your food images using Gemini API for optimal categorization and matching'
+                : 'Processing your donation and finding recipients...',
+            style: const TextStyle(color: Colors.grey),
             textAlign: TextAlign.center,
           ),
         ],
@@ -1107,7 +1109,8 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         status: 'pending',
         images: [], // Will be set after upload
         description: _descriptionController.text,
-        aiDescription: _descriptionController.text,
+        aiDescription: _descriptionController
+            .text, // Backend will update this with AI analysis
         categories: _selectedCategories,
         tags: _selectedTags,
         quantity: {
@@ -1132,11 +1135,12 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           SnackBar(
             content: Text(_selectedImages.isEmpty
                 ? 'Donation created successfully! Finding recipients...'
-                : 'Donation created! AI analysis completed and finding recipients...'),
-            duration: const Duration(seconds: 3),
+                : 'Donation created with Gemini AI analysis! Enhanced categorization and matching in progress...'),
+            duration: const Duration(seconds: 4),
           ),
         );
-        Navigator.pop(context);
+        // Navigate back to donor dashboard by popping all routes and going to dashboard
+        Navigator.of(context).popUntil((route) => route.isFirst);
       }
     } catch (e) {
       if (mounted) {
