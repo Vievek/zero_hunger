@@ -286,7 +286,7 @@ exports.getMatchedDonations = async (req, res) => {
 exports.acceptDonationOffer = async (req, res) => {
   try {
     const { donationId } = req.params;
-    console.log(`✅ Recipient ${req.user.id} accepting donation: ${donationId}`);
+    console.log(`✅ ${req.user.role} ${req.user.id} accepting donation: ${donationId}`);
 
     const donation = await Donation.findById(donationId);
     console.log("🔍 Donation fetched:", donation ? donation._id : "Not found");
