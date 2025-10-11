@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/logistics_provider.dart';
 import '../models/logistics_model.dart';
 import '../widgets/dashboard_appbar.dart';
+import '../services/location_service.dart';
 
 class VolunteerDashboardScreen extends StatefulWidget {
   const VolunteerDashboardScreen({super.key});
@@ -13,16 +14,114 @@ class VolunteerDashboardScreen extends StatefulWidget {
 }
 
 class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
+  bool _isInitializing = true;
+  bool _locationLoaded = false;
+  bool _tasksLoaded = false;
+  bool _statsLoaded = false;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      Provider.of<LogisticsProvider>(context, listen: false).fetchMyTasks();
-      Provider.of<LogisticsProvider>(context, listen: false)
-          .fetchAvailableTasks();
-      Provider.of<LogisticsProvider>(context, listen: false)
-          .fetchVolunteerStats();
+      _initializeDashboard();
     });
+  }
+
+  Future<void> _initializeDashboard() async {
+    final provider = Provider.of<LogisticsProvider>(context, listen: false);
+
+    // Start all API calls simultaneously but don't wait for all
+    final locationFuture = _initializeLocation(provider);
+    final tasksFuture = _initializeTasks(provider);
+    final statsFuture = _initializeStats(provider);
+
+    // Wait a bit for initial data, then show UI
+    await Future.any([
+      Future.delayed(const Duration(seconds: 2)),
+      Future.wait([locationFuture, tasksFuture, statsFuture])
+    ]);
+
+    setState(() {
+      _isInitializing = false;
+    });
+  }
+
+  Future<void> _initializeLocation(LogisticsProvider provider) async {
+    try {
+      final position = await LocationService.getCurrentLocation();
+      await provider.updateVolunteerLocation(
+        position.latitude,
+        position.longitude,
+        address: 'Current Location',
+      );
+      setState(() {
+        _locationLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('Auto-location failed: $e');
+      setState(() {
+        _locationLoaded = true; // Mark as loaded even if failed
+      });
+    }
+  }
+
+  Future<void> _initializeTasks(LogisticsProvider provider) async {
+    try {
+      await provider.fetchMyTasks();
+      await provider.fetchAvailableTasks();
+      setState(() {
+        _tasksLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('Tasks loading failed: $e');
+      setState(() {
+        _tasksLoaded = true; // Mark as loaded even if failed
+      });
+    }
+  }
+
+  Future<void> _initializeStats(LogisticsProvider provider) async {
+    try {
+      await provider.fetchVolunteerStats();
+      setState(() {
+        _statsLoaded = true;
+      });
+    } catch (e) {
+      debugPrint('Stats loading failed: $e');
+      setState(() {
+        _statsLoaded = true; // Mark as loaded even if failed
+      });
+    }
+  }
+
+  Future<void> _updateVolunteerLocation(LogisticsProvider provider) async {
+    try {
+      final position = await LocationService.getCurrentLocation();
+
+      await provider.updateVolunteerLocation(
+        position.latitude,
+        position.longitude,
+        address: 'Current Location',
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location updated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update location: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -33,49 +132,136 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
       appBar: const DashboardAppBar(
         title: 'Volunteer Dashboard',
       ),
-      body: Column(
-        children: [
-          // Welcome Header
-          _buildWelcomeHeader(),
+      body: _isInitializing
+          ? _buildLoadingScreen()
+          : Column(
+              children: [
+                // Welcome Header
+                _buildWelcomeHeader(logisticsProvider),
 
-          // Stats Overview
-          _buildStatsCard(logisticsProvider),
+                // Stats Overview
+                _buildStatsCard(logisticsProvider),
 
-          const SizedBox(height: 16),
+                const SizedBox(height: 16),
 
-          // Tabs for Available Tasks and My Tasks
-          Expanded(
-            child: DefaultTabController(
-              length: 2,
-              child: Column(
-                children: [
-                  const TabBar(
-                    tabs: [
-                      Tab(icon: Icon(Icons.list), text: 'Available Tasks'),
-                      Tab(icon: Icon(Icons.assignment), text: 'My Tasks'),
-                    ],
-                  ),
-                  Expanded(
-                    child: TabBarView(
+                // Tabs for Available Tasks and My Tasks
+                Expanded(
+                  child: DefaultTabController(
+                    length: 2,
+                    child: Column(
                       children: [
-                        // Available Tasks Tab
-                        _buildAvailableTasksTab(logisticsProvider),
+                        const TabBar(
+                          tabs: [
+                            Tab(
+                                icon: Icon(Icons.list),
+                                text: 'Available Tasks'),
+                            Tab(icon: Icon(Icons.assignment), text: 'My Tasks'),
+                          ],
+                        ),
+                        Expanded(
+                          child: TabBarView(
+                            children: [
+                              // Available Tasks Tab
+                              _buildAvailableTasksTab(logisticsProvider),
 
-                        // My Tasks Tab
-                        _buildMyTasksTab(logisticsProvider),
+                              // My Tasks Tab
+                              _buildMyTasksTab(logisticsProvider),
+                            ],
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ),
-        ],
-      ),
     );
   }
 
-  Widget _buildWelcomeHeader() {
+  Widget _buildLoadingScreen() {
+    return Column(
+      children: [
+        // Loading header
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: Colors.purple.withAlpha(25),
+            borderRadius: const BorderRadius.only(
+              bottomLeft: Radius.circular(20),
+              bottomRight: Radius.circular(20),
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Volunteer Dashboard 🚗',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Loading your dashboard...',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 16),
+              LinearProgressIndicator(
+                value: (_locationLoaded && _tasksLoaded && _statsLoaded)
+                    ? 1.0
+                    : null,
+                backgroundColor: Colors.grey[300],
+                valueColor: AlwaysStoppedAnimation<Color>(Colors.blue),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _getLoadingStatus(),
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ),
+        ),
+
+        // Loading content
+        Expanded(
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 20),
+                Text(
+                  _getLoadingMessage(),
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(fontSize: 16, color: Colors.grey),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _getLoadingStatus() {
+    int loadedCount =
+        [_locationLoaded, _tasksLoaded, _statsLoaded].where((e) => e).length;
+    return 'Loading... $loadedCount/3 complete';
+  }
+
+  String _getLoadingMessage() {
+    if (!_locationLoaded) return 'Getting your location...';
+    if (!_tasksLoaded) return 'Loading available tasks...';
+    if (!_statsLoaded) return 'Loading your statistics...';
+    return 'Almost ready...';
+  }
+
+  Widget _buildWelcomeHeader(LogisticsProvider provider) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
@@ -86,22 +272,32 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
           bottomRight: Radius.circular(20),
         ),
       ),
-      child: const Column(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
+          const Text(
             'Volunteer Dashboard 🚗',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
             ),
           ),
-          SizedBox(height: 8),
-          Text(
+          const SizedBox(height: 8),
+          const Text(
             'Find and accept delivery tasks near you',
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ElevatedButton.icon(
+            onPressed: () => _updateVolunteerLocation(provider),
+            icon: const Icon(Icons.location_on),
+            label: const Text('Update My Location'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue,
+              foregroundColor: Colors.white,
             ),
           ),
         ],
@@ -168,13 +364,13 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
   }
 
   Widget _buildAvailableTasksTab(LogisticsProvider provider) {
-    return provider.isLoading
+    return provider.isLoading && !_tasksLoaded
         ? const Center(child: CircularProgressIndicator())
         : _buildAvailableTasksList(provider.availableTasks, provider);
   }
 
   Widget _buildMyTasksTab(LogisticsProvider provider) {
-    return provider.isLoading
+    return provider.isLoading && !_tasksLoaded
         ? const Center(child: CircularProgressIndicator())
         : _buildTasksList(provider.tasks, provider);
   }
@@ -182,7 +378,7 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
   Widget _buildAvailableTasksList(
       List<LogisticsTask> tasks, LogisticsProvider provider) {
     if (tasks.isEmpty) {
-      return _buildEmptyAvailableTasksState();
+      return _buildEmptyAvailableTasksState(provider);
     }
 
     return RefreshIndicator(
@@ -219,32 +415,46 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
     );
   }
 
-  Widget _buildEmptyAvailableTasksState() {
+  Widget _buildEmptyAvailableTasksState(LogisticsProvider provider) {
+    final hasLocation = provider.currentLocation != null;
+
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.search_off, size: 64, color: Colors.grey),
+          Icon(
+            hasLocation ? Icons.search_off : Icons.location_off,
+            size: 64,
+            color: Colors.grey,
+          ),
           const SizedBox(height: 16),
-          const Text(
-            'No Available Tasks',
-            style: TextStyle(fontSize: 18, color: Colors.grey),
+          Text(
+            hasLocation ? 'No Available Tasks' : 'Location Required',
+            style: const TextStyle(fontSize: 18, color: Colors.grey),
           ),
           const SizedBox(height: 8),
-          const Text(
-            'Check back later for new delivery tasks\nwithin 5km of your location',
+          Text(
+            hasLocation
+                ? 'Check back later for new delivery tasks\nwithin 5km of your location'
+                : 'Please update your location to see nearby tasks',
             textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 14, color: Colors.grey),
+            style: const TextStyle(fontSize: 14, color: Colors.grey),
           ),
           const SizedBox(height: 20),
-          ElevatedButton.icon(
-            onPressed: () {
-              Provider.of<LogisticsProvider>(context, listen: false)
-                  .fetchAvailableTasks();
-            },
-            icon: const Icon(Icons.refresh),
-            label: const Text('Refresh'),
-          ),
+          if (!hasLocation)
+            ElevatedButton.icon(
+              onPressed: () => _updateVolunteerLocation(provider),
+              icon: const Icon(Icons.location_on),
+              label: const Text('Set Location'),
+            )
+          else
+            ElevatedButton.icon(
+              onPressed: () {
+                provider.fetchAvailableTasks();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh'),
+            ),
         ],
       ),
     );

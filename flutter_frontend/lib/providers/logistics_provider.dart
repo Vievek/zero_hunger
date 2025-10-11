@@ -2,6 +2,18 @@ import 'package:flutter/foundation.dart';
 import '../models/logistics_model.dart';
 import '../services/api_service.dart';
 
+class LocationData {
+  final double lat;
+  final double lng;
+
+  const LocationData({required this.lat, required this.lng});
+
+  Map<String, dynamic> toJson() => {
+        'lat': lat,
+        'lng': lng,
+      };
+}
+
 class LogisticsProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
 
@@ -11,13 +23,34 @@ class LogisticsProvider with ChangeNotifier {
   String? _error;
   Map<String, dynamic> _volunteerStats = {};
   final Map<String, bool> _updatingTasks = {};
+  LocationData? _currentLocation;
 
   List<LogisticsTask> get tasks => _tasks;
   List<LogisticsTask> get availableTasks => _availableTasks;
   bool get isLoading => _isLoading;
   String? get error => _error;
   Map<String, dynamic> get volunteerStats => _volunteerStats;
+  LocationData? get currentLocation => _currentLocation;
   bool isUpdating(String taskId) => _updatingTasks[taskId] == true;
+
+  // NEW: Enhanced location update method
+  Future<void> updateVolunteerLocation(double lat, double lng,
+      {String? address}) async {
+    try {
+      _currentLocation = LocationData(lat: lat, lng: lng);
+
+      await _apiService.updateVolunteerLocation(lat, lng, address: address);
+
+      // Refresh available tasks after location update
+      await fetchAvailableTasks();
+
+      notifyListeners();
+    } catch (error) {
+      _error = error.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
 
   // NEW: Fetch available tasks near volunteer
   Future<void> fetchAvailableTasks() async {
@@ -140,17 +173,6 @@ class LogisticsProvider with ChangeNotifier {
       return response['data'];
     } catch (error) {
       rethrow;
-    }
-  }
-
-  Future<void> updateVolunteerLocation(double lat, double lng,
-      {String? address}) async {
-    try {
-      await _apiService.updateVolunteerLocation(lat, lng, address: address);
-    } catch (error) {
-      if (kDebugMode) {
-        print('Failed to update location: $error');
-      }
     }
   }
 

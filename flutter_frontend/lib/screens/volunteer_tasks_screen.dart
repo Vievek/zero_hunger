@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/logistics_provider.dart';
 import '../models/logistics_model.dart';
+import '../services/location_service.dart';
 
 class VolunteerTasksScreen extends StatefulWidget {
   const VolunteerTasksScreen({super.key});
@@ -21,6 +22,34 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
     });
   }
 
+  Future<void> _updateCurrentLocation(LogisticsProvider provider) async {
+    try {
+      final position = await LocationService.getCurrentLocation();
+      await provider.updateVolunteerLocation(
+        position.latitude,
+        position.longitude,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Location updated successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to update location: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final logisticsProvider = Provider.of<LogisticsProvider>(context);
@@ -29,6 +58,11 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
       appBar: AppBar(
         title: const Text('My Delivery Tasks'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.location_on),
+            onPressed: () => _updateCurrentLocation(logisticsProvider),
+            tooltip: 'Update Location',
+          ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: () {
@@ -340,13 +374,17 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
 
       // Include location for certain status updates
       if (status == 'picked_up' || status == 'in_transit') {
-        // In a real app, you would get the current location here
-        additionalData = {
-          'currentLocation': {
-            'lat': 0.0, // Replace with actual location
-            'lng': 0.0, // Replace with actual location
-          },
-        };
+        try {
+          final position = await LocationService.getCurrentLocation();
+          additionalData = {
+            'currentLocation': {
+              'lat': position.latitude,
+              'lng': position.longitude,
+            },
+          };
+        } catch (e) {
+          debugPrint('Failed to get location for status update: $e');
+        }
       }
 
       await provider.updateTaskStatus(taskId, status,
