@@ -38,32 +38,34 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
       categories: _selectedCategories,
     );
   }
+
   void _showLogoutDialog(BuildContext context) {
-  showDialog(
-    context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Logout'),
-      content: const Text('Are you sure you want to logout?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () {
-            Navigator.pop(context);
-            Provider.of<AuthProvider>(context, listen: false).logout();
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-              (route) => false,
-            );
-          },
-          child: const Text('Logout', style: TextStyle(color: Colors.red)),
-        ),
-      ],
-    ),
-  );}
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              Provider.of<AuthProvider>(context, listen: false).logout();
+              Navigator.pushAndRemoveUntil(
+                context,
+                MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+                (route) => false,
+              );
+            },
+            child: const Text('Logout', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -210,8 +212,6 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
   }
 
   Widget _buildStatsCard(DonationProvider provider) {
-   // final stats = provider.donationStatsSummary;
-
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Card(
@@ -564,7 +564,7 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
   double _getMaxMatchScore(Donation donation) {
     if (donation.matchedRecipients.isEmpty) return 0.0;
     return donation.matchedRecipients
-        .map((match) => match.matchScore ?? 0.0)
+        .map((match) => match.matchScore)
         .reduce((a, b) => a > b ? a : b);
   }
 
@@ -744,19 +744,17 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 4),
-        ...warnings
-            .map((warning) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Icon(Icons.warning, size: 16, color: Colors.orange),
-                      const SizedBox(width: 4),
-                      Expanded(child: Text(warning.toString())),
-                    ],
-                  ),
-                ))
-            ,
+        ...warnings.map((warning) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.warning, size: 16, color: Colors.orange),
+                  const SizedBox(width: 4),
+                  Expanded(child: Text(warning.toString())),
+                ],
+              ),
+            )),
       ],
     );
   }

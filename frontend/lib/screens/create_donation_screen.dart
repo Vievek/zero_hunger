@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
+import 'package:geocoding/geocoding.dart';
+import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
@@ -30,6 +33,13 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
 
   DateTime? _scheduledPickup;
   bool _isSubmitting = false;
+  bool _isAnalyzingImages = false;
+  bool _isGettingLocation = false;
+
+  // Map variables
+  LatLng? _selectedLocation;
+  GoogleMapController? _mapController;
+  final Set<Marker> _markers = {};
 
   final List<String> _availableCategories = [
     'prepared-meal',
@@ -56,13 +66,183 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   ];
 
   @override
+  void initState() {
+    super.initState();
+    _getCurrentLocation();
+  }
+
+  @override
   void dispose() {
     _descriptionController.dispose();
     _quantityController.dispose();
     _unitController.dispose();
     _addressController.dispose();
     _expectedQuantityController.dispose();
+    _mapController?.dispose();
     super.dispose();
+  }
+
+  Future<void> _getCurrentLocation() async {
+    setState(() {
+      _isGettingLocation = true;
+    });
+
+    try {
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        throw Exception('Location services are disabled.');
+      }
+
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('Location permissions are denied');
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('Location permissions are permanently denied.');
+      }
+
+      Position position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+
+      setState(() {
+        _selectedLocation = LatLng(position.latitude, position.longitude);
+        _addMarker(_selectedLocation!);
+      });
+
+      // Get address from coordinates
+      await _getAddressFromLatLng(_selectedLocation!);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to get location: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isGettingLocation = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _getAddressFromLatLng(LatLng latLng) async {
+    try {
+      List<Placemark> placemarks = await placemarkFromCoordinates(
+        latLng.latitude,
+        latLng.longitude,
+      );
+
+      if (placemarks.isNotEmpty) {
+        Placemark placemark = placemarks.first;
+        String address = [
+          placemark.street,
+          placemark.locality,
+          placemark.administrativeArea,
+          placemark.country
+        ].where((part) => part != null && part.isNotEmpty).join(', ');
+
+        setState(() {
+          _addressController.text = address;
+        });
+      }
+    } catch (e) {
+      debugPrint('Geocoding error: $e');
+    }
+  }
+
+  Future<void> _searchLocation(String query) async {
+    if (query.isEmpty) return;
+
+    try {
+      List<Location> locations = await locationFromAddress(query);
+      if (locations.isNotEmpty) {
+        Location location = locations.first;
+        LatLng newLocation = LatLng(location.latitude, location.longitude);
+
+        setState(() {
+          _selectedLocation = newLocation;
+          _addMarker(newLocation);
+        });
+
+        _mapController?.animateCamera(
+          CameraUpdate.newLatLngZoom(newLocation, 15),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Location not found: $e')),
+        );
+      }
+    }
+  }
+
+  void _addMarker(LatLng position) {
+    setState(() {
+      _markers.clear();
+      _markers.add(
+        Marker(
+          markerId: const MarkerId('selected_location'),
+          position: position,
+          infoWindow: const InfoWindow(title: 'Pickup Location'),
+          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
+        ),
+      );
+    });
+  }
+
+  Future<void> _analyzeImages() async {
+    if (_selectedImages.isEmpty) return;
+
+    setState(() {
+      _isAnalyzingImages = true;
+    });
+
+    try {
+      final donationProvider =
+          Provider.of<DonationProvider>(context, listen: false);
+
+      // Call the actual AI analysis endpoint
+      final aiAnalysis =
+          await donationProvider.analyzeFoodImages(_selectedImages);
+
+      // Update the form with AI analysis results
+      setState(() {
+        if (aiAnalysis['description'] != null &&
+            _descriptionController.text.isEmpty) {
+          _descriptionController.text = aiAnalysis['description'];
+        }
+
+        _selectedCategories.clear();
+        _selectedCategories.addAll(aiAnalysis['categories'] ?? []);
+
+        _selectedTags.clear();
+        _selectedTags.addAll(aiAnalysis['dietaryInfo'] ?? []);
+
+        _isAnalyzingImages = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('AI analysis completed!')),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isAnalyzingImages = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('AI analysis failed: $e')),
+        );
+      }
+    }
   }
 
   @override
@@ -95,6 +275,10 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     _buildImageUploadSection(),
                     const SizedBox(height: 20),
 
+                    // AI Analysis Button
+                    if (_selectedImages.isNotEmpty && !_isAnalyzingImages)
+                      _buildAIAnalysisButton(),
+
                     // Description
                     _buildDescriptionSection(),
                     const SizedBox(height: 20),
@@ -113,6 +297,10 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
 
                     // Location
                     _buildLocationSection(),
+                    const SizedBox(height: 20),
+
+                    // Map
+                    _buildMapSection(),
                     const SizedBox(height: 20),
 
                     // Scheduled Pickup (for bulk)
@@ -184,7 +372,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const Text(
-          'Food Images',
+          'Food Images *',
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
@@ -244,7 +432,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                   ),
                 ),
             GestureDetector(
-              onTap: _pickImage,
+              onTap: _showImageSourceDialog,
               child: Container(
                 width: 100,
                 height: 100,
@@ -275,6 +463,24 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _buildAIAnalysisButton() {
+    return SizedBox(
+      width: double.infinity,
+      child: OutlinedButton.icon(
+        onPressed: _isAnalyzingImages ? null : _analyzeImages,
+        icon: _isAnalyzingImages
+            ? const SizedBox(
+                width: 16,
+                height: 16,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.auto_awesome),
+        label: Text(
+            _isAnalyzingImages ? 'Analyzing Images...' : 'Analyze with AI'),
+      ),
     );
   }
 
@@ -470,26 +676,66 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         const SizedBox(height: 8),
-        TextFormField(
-          controller: _addressController,
-          decoration: const InputDecoration(
-            labelText: 'Full pickup address',
-            border: OutlineInputBorder(),
-            hintText: 'Street address, city, postal code',
-            prefixIcon: Icon(Icons.location_on),
-          ),
-          maxLines: 3,
-          validator: (value) {
-            if (value == null || value.isEmpty) {
-              return 'Please enter pickup address';
-            }
-            if (value.length < 10) {
-              return 'Please provide a complete address';
-            }
-            return null;
-          },
+        Row(
+          children: [
+            Expanded(
+              child: TextFormField(
+                controller: _addressController,
+                decoration: const InputDecoration(
+                  labelText: 'Search or enter address',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.search),
+                ),
+                onChanged: (value) {
+                  if (value.length > 3) {
+                    _searchLocation(value);
+                  }
+                },
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.my_location),
+              onPressed: _isGettingLocation ? null : _getCurrentLocation,
+              tooltip: 'Use current location',
+            ),
+          ],
         ),
       ],
+    );
+  }
+
+  Widget _buildMapSection() {
+    return SizedBox(
+      height: 200,
+      child: _isGettingLocation
+          ? const Center(child: CircularProgressIndicator())
+          : _selectedLocation == null
+              ? const Center(child: Text('Select a location to view map'))
+              : ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: GoogleMap(
+                    onMapCreated: (controller) {
+                      setState(() {
+                        _mapController = controller;
+                      });
+                    },
+                    initialCameraPosition: CameraPosition(
+                      target: _selectedLocation!,
+                      zoom: 15,
+                    ),
+                    markers: _markers,
+                    onTap: (LatLng position) {
+                      setState(() {
+                        _selectedLocation = position;
+                        _addMarker(position);
+                      });
+                      _getAddressFromLatLng(position);
+                    },
+                    myLocationEnabled: true,
+                    myLocationButtonEnabled: false,
+                  ),
+                ),
     );
   }
 
@@ -577,10 +823,38 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     );
   }
 
-  Future<void> _pickImage() async {
+  Future<void> _showImageSourceDialog() async {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Select Image Source'),
+          content: const Text('Choose how to select images'),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.camera);
+              },
+              child: const Text('Camera'),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(context);
+                _pickImage(ImageSource.gallery);
+              },
+              child: const Text('Gallery'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _pickImage(ImageSource source) async {
     try {
       final XFile? image = await _imagePicker.pickImage(
-        source: ImageSource.camera,
+        source: source,
         maxWidth: 1200,
         maxHeight: 1200,
         imageQuality: 80,
@@ -674,6 +948,15 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       }
     }
 
+    if (_selectedLocation == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Please select a location on the map')),
+        );
+      }
+      return;
+    }
+
     if (!mounted) return;
 
     setState(() {
@@ -681,16 +964,12 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     });
 
     try {
-      List<String> imageUrls = [];
-      if (_selectedImages.isNotEmpty) {
-        imageUrls = await donationProvider.uploadImages(_selectedImages);
-      }
-
       final donation = Donation(
         donorId: '', // Will be set by backend
         type: _donationType,
         status: 'pending',
-        images: imageUrls,
+        images: [], // Will be set after upload
+        description: _descriptionController.text,
         aiDescription: _descriptionController.text,
         categories: _selectedCategories,
         tags: _selectedTags,
@@ -703,8 +982,8 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         scheduledPickup: _scheduledPickup,
         pickupAddress: _addressController.text,
         location: {
-          'lat': 0.0, // In production, get from geocoding
-          'lng': 0.0,
+          'lat': _selectedLocation!.latitude,
+          'lng': _selectedLocation!.longitude,
         },
         createdAt: DateTime.now(),
       );

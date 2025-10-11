@@ -117,6 +117,14 @@ exports.createDonation = async (req, res) => {
       urgency = "normal",
     } = req.body;
 
+    // Validate required fields
+    if (!type || !pickupAddress || !location) {
+      return res.status(400).json({
+        success: false,
+        message: "Missing required fields: type, pickupAddress, location",
+      });
+    }
+
     if (type === "bulk" && !scheduledPickup) {
       return res.status(400).json({
         success: false,
@@ -127,15 +135,15 @@ exports.createDonation = async (req, res) => {
     const donation = new Donation({
       donor: req.user.id,
       type,
-      images,
-      description,
-      quantity,
+      images: images || [],
+      description: description || "",
+      quantity: quantity || { amount: 0, unit: "units" },
       expectedQuantity: type === "bulk" ? expectedQuantity : undefined,
       scheduledPickup: type === "bulk" ? scheduledPickup : undefined,
       pickupAddress,
       location,
-      categories,
-      tags,
+      categories: categories || [],
+      tags: tags || [],
       urgency,
       status: "active",
     });
@@ -151,13 +159,16 @@ exports.createDonation = async (req, res) => {
 
         donation.aiDescription = aiAnalysis.description;
         donation.categories = [
-          ...new Set([...categories, ...aiAnalysis.categories]),
+          ...new Set([
+            ...(donation.categories || []),
+            ...(aiAnalysis.categories || []),
+          ]),
         ];
         donation.tags = [
           ...new Set([
-            ...tags,
-            ...aiAnalysis.allergens,
-            ...aiAnalysis.dietaryInfo,
+            ...(donation.tags || []),
+            ...(aiAnalysis.allergens || []),
+            ...(aiAnalysis.dietaryInfo || []),
           ]),
         ];
         donation.aiAnalysis = aiAnalysis;
@@ -243,7 +254,9 @@ exports.acceptDonation = async (req, res) => {
       },
       dropoffLocation: {
         address:
-          recipient.recipientDetails?.address || recipient.contactInfo?.address,
+          recipient.recipientDetails?.address ||
+          recipient.contactInfo?.address ||
+          donation.pickupAddress,
         lat: recipient.recipientDetails?.location?.lat || donation.location.lat,
         lng: recipient.recipientDetails?.location?.lng || donation.location.lng,
       },
@@ -283,10 +296,6 @@ exports.getAvailableDonations = async (req, res) => {
   try {
     const { page = 1, limit = 10, categories, distance } = req.query;
     console.log("Fetching available donations for user:", req.user.id);
-
-    const recipient = await User.findById(req.user.id);
-    const recipientLocation =
-      recipient.recipientDetails?.location || recipient.contactInfo?.location;
 
     let query = {
       status: "active",
@@ -496,7 +505,7 @@ exports.getDonationStats = async (req, res) => {
     const stats = await Donation.aggregate([
       {
         $match: {
-          donor: require("mongoose").Types.ObjectId.createFromHexString(userId),
+          donor: mongoose.Types.ObjectId.createFromHexString(userId),
         },
       },
       {
@@ -608,6 +617,36 @@ exports.searchAvailableDonations = async (req, res) => {
     res.status(500).json({
       success: false,
       message: error.message,
+    });
+  }
+};
+
+exports.analyzeFoodImages = async (req, res) => {
+  try {
+    const { images } = req.body;
+
+    if (!images || images.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No images provided for analysis",
+      });
+    }
+
+    console.log("Analyzing food images with AI...");
+
+    // Call Gemini AI service for analysis
+    const aiAnalysis = await geminiService.analyzeFoodImages(images);
+
+    res.json({
+      success: true,
+      data: aiAnalysis,
+      message: "AI analysis completed successfully",
+    });
+  } catch (error) {
+    console.error("Image analysis error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to analyze images: " + error.message,
     });
   }
 };

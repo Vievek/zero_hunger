@@ -1,32 +1,35 @@
 class Donation {
   final String? id;
   final String donorId;
-  final String type; // 'normal' or 'bulk'
+  final Map<String, dynamic>? donor;
+  final String type;
   final String status;
   final List<String> images;
+  final String? description;
   final String? aiDescription;
   final List<String> categories;
   final List<String> tags;
   final Map<String, dynamic> quantity;
   final Map<String, dynamic>? handlingWindow;
-  final String? expectedQuantity; // For bulk donations
+  final String? expectedQuantity;
   final DateTime? scheduledPickup;
   final String pickupAddress;
   final Map<String, dynamic> location;
   final Map<String, dynamic>? aiAnalysis;
-  final List<dynamic> matchedRecipients;
+  final List<MatchedRecipient> matchedRecipients;
   final String? acceptedBy;
   final String? assignedVolunteer;
-  final Map<String, dynamic>? donor; // Added donor field
-  final String? urgency; // Added urgency field
+  final String? urgency;
   final DateTime createdAt;
 
   Donation({
     this.id,
     required this.donorId,
+    this.donor,
     required this.type,
     required this.status,
     required this.images,
+    this.description,
     this.aiDescription,
     required this.categories,
     required this.tags,
@@ -40,7 +43,6 @@ class Donation {
     this.matchedRecipients = const [],
     this.acceptedBy,
     this.assignedVolunteer,
-    this.donor,
     this.urgency,
     required this.createdAt,
   });
@@ -48,10 +50,12 @@ class Donation {
   factory Donation.fromJson(Map<String, dynamic> json) {
     return Donation(
       id: json['_id'],
-      donorId: json['donor'],
-      type: json['type'],
-      status: json['status'],
+      donorId: _parseDonorId(json['donor']),
+      donor: _parseDonorObject(json['donor']),
+      type: json['type'] ?? 'normal',
+      status: json['status'] ?? 'pending',
       images: List<String>.from(json['images'] ?? []),
+      description: json['description'],
       aiDescription: json['aiDescription'],
       categories: List<String>.from(json['categories'] ?? []),
       tags: List<String>.from(json['tags'] ?? []),
@@ -63,44 +67,78 @@ class Donation {
       scheduledPickup: json['scheduledPickup'] != null
           ? DateTime.parse(json['scheduledPickup'])
           : null,
-      pickupAddress: json['pickupAddress'],
+      pickupAddress: json['pickupAddress'] ?? '',
       location: Map<String, dynamic>.from(json['location'] ?? {}),
       aiAnalysis: json['aiAnalysis'] != null
           ? Map<String, dynamic>.from(json['aiAnalysis'])
           : null,
-      matchedRecipients: json['matchedRecipients'] ?? [],
+      matchedRecipients:
+          _parseMatchedRecipients(json['matchedRecipients'] ?? []),
       acceptedBy: json['acceptedBy'],
       assignedVolunteer: json['assignedVolunteer'],
-      donor: json['donor'] != null
-          ? Map<String, dynamic>.from(json['donor'])
-          : null,
       urgency: json['urgency'],
-      createdAt: DateTime.parse(json['createdAt']),
+      createdAt:
+          DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
     );
+  }
+
+  static String _parseDonorId(dynamic donor) {
+    if (donor == null) return '';
+    if (donor is String) return donor;
+    if (donor is Map) {
+      return donor['_id']?.toString() ?? donor['id']?.toString() ?? '';
+    }
+    return donor.toString();
+  }
+
+  static Map<String, dynamic>? _parseDonorObject(dynamic donor) {
+    if (donor is Map) {
+      return Map<String, dynamic>.from(donor);
+    }
+    return null;
+  }
+
+  static List<MatchedRecipient> _parseMatchedRecipients(
+      List<dynamic> recipients) {
+    return recipients.map((item) {
+      if (item is Map) {
+        return MatchedRecipient.fromJson(Map<String, dynamic>.from(item));
+      }
+      return MatchedRecipient(
+          recipientId: item.toString(), matchScore: 0.0, status: 'offered');
+    }).toList();
   }
 
   Map<String, dynamic> toJson() {
     return {
+      if (id != null) '_id': id,
+      'donor': donorId,
       'type': type,
+      'status': status,
       'images': images,
+      'description': description,
+      'aiDescription': aiDescription,
+      'categories': categories,
+      'tags': tags,
       'quantity': quantity,
+      'handlingWindow': handlingWindow,
       'expectedQuantity': expectedQuantity,
       'scheduledPickup': scheduledPickup?.toIso8601String(),
       'pickupAddress': pickupAddress,
       'location': location,
-      'categories': categories,
-      'tags': tags,
       'urgency': urgency,
+      'createdAt': createdAt.toIso8601String(),
     };
   }
 
-  // CopyWith method for immutability
   Donation copyWith({
     String? id,
     String? donorId,
+    Map<String, dynamic>? donor,
     String? type,
     String? status,
     List<String>? images,
+    String? description,
     String? aiDescription,
     List<String>? categories,
     List<String>? tags,
@@ -111,19 +149,20 @@ class Donation {
     String? pickupAddress,
     Map<String, dynamic>? location,
     Map<String, dynamic>? aiAnalysis,
-    List<dynamic>? matchedRecipients,
+    List<MatchedRecipient>? matchedRecipients,
     String? acceptedBy,
     String? assignedVolunteer,
-    Map<String, dynamic>? donor,
     String? urgency,
     DateTime? createdAt,
   }) {
     return Donation(
       id: id ?? this.id,
       donorId: donorId ?? this.donorId,
+      donor: donor ?? this.donor,
       type: type ?? this.type,
       status: status ?? this.status,
       images: images ?? this.images,
+      description: description ?? this.description,
       aiDescription: aiDescription ?? this.aiDescription,
       categories: categories ?? this.categories,
       tags: tags ?? this.tags,
@@ -137,7 +176,6 @@ class Donation {
       matchedRecipients: matchedRecipients ?? this.matchedRecipients,
       acceptedBy: acceptedBy ?? this.acceptedBy,
       assignedVolunteer: assignedVolunteer ?? this.assignedVolunteer,
-      donor: donor ?? this.donor,
       urgency: urgency ?? this.urgency,
       createdAt: createdAt ?? this.createdAt,
     );
@@ -178,7 +216,7 @@ class Donation {
 
   // AI analysis helpers
   String get displayDescription {
-    return aiDescription ?? 'Food Donation';
+    return aiDescription ?? description ?? 'Food Donation';
   }
 
   String get quantityText {
@@ -211,7 +249,9 @@ class Donation {
     if (handlingWindow == null) return false;
 
     try {
-      final end = DateTime.parse(handlingWindow!['end']);
+      final end = handlingWindow!['end'] is String
+          ? DateTime.parse(handlingWindow!['end'])
+          : DateTime.fromMillisecondsSinceEpoch(handlingWindow!['end']);
       final now = DateTime.now();
       final timeRemaining = end.difference(now);
 
@@ -220,5 +260,69 @@ class Donation {
     } catch (e) {
       return false;
     }
+  }
+}
+
+class MatchedRecipient {
+  final String recipientId;
+  final Map<String, dynamic>? recipient;
+  final double matchScore;
+  final String status;
+  final DateTime? respondedAt;
+
+  MatchedRecipient({
+    required this.recipientId,
+    this.recipient,
+    required this.matchScore,
+    required this.status,
+    this.respondedAt,
+  });
+
+  factory MatchedRecipient.fromJson(Map<String, dynamic> json) {
+    return MatchedRecipient(
+      recipientId: _parseRecipientId(json['recipient']),
+      recipient: _parseRecipientObject(json['recipient']),
+      matchScore: (json['matchScore'] ?? 0.0).toDouble(),
+      status: json['status'] ?? 'offered',
+      respondedAt: json['respondedAt'] != null
+          ? DateTime.parse(json['respondedAt'])
+          : null,
+    );
+  }
+
+  static String _parseRecipientId(dynamic recipient) {
+    if (recipient == null) return '';
+    if (recipient is String) return recipient;
+    if (recipient is Map) {
+      return recipient['_id']?.toString() ?? recipient['id']?.toString() ?? '';
+    }
+    return recipient.toString();
+  }
+
+  static Map<String, dynamic>? _parseRecipientObject(dynamic recipient) {
+    if (recipient is Map) {
+      return Map<String, dynamic>.from(recipient);
+    }
+    return null;
+  }
+}
+
+class Donor {
+  final String id;
+  final String name;
+  final String email;
+
+  Donor({
+    required this.id,
+    required this.name,
+    required this.email,
+  });
+
+  factory Donor.fromJson(Map<String, dynamic> json) {
+    return Donor(
+      id: json['_id'] ?? json['id'] ?? '',
+      name: json['name'] ?? '',
+      email: json['email'] ?? '',
+    );
   }
 }

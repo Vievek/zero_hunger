@@ -25,6 +25,8 @@ dependencies:
   flutter_secure_storage: ^9.0.0
   pull_to_refresh: ^2.0.0
   connectivity_plus: ^5.0.1
+  image_and_file_picker_utility: ^0.0.9
+  geocoding: ^2.1.1
 
 dev_dependencies:
   flutter_test:

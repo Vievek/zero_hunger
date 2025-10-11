@@ -19,6 +19,28 @@ class DonationProvider with ChangeNotifier {
   String? get error => _error;
   Map<String, dynamic> get donationStats => _donationStats;
 
+  Future<Map<String, dynamic>> analyzeFoodImages(List<File> imageFiles) async {
+    try {
+      // Upload images first
+      List<String> imageUrls = await uploadImages(imageFiles);
+
+      // Call backend AI analysis endpoint
+      final response = await _apiService.analyzeFoodImages(imageUrls);
+      return response['data'];
+    } catch (error) {
+      throw Exception('Failed to analyze images: $error');
+    }
+  }
+
+  Future<List<String>> uploadImages(List<File> imageFiles) async {
+    try {
+      final response = await _apiService.uploadImages(imageFiles);
+      return List<String>.from(response['data']['images']);
+    } catch (error) {
+      throw Exception('Failed to upload images: $error');
+    }
+  }
+
   Future<void> createDonation(Donation donation, List<File> imageFiles) async {
     try {
       _isLoading = true;
@@ -35,38 +57,38 @@ class DonationProvider with ChangeNotifier {
       final donationData = donation.toJson();
       donationData['images'] = imageUrls;
 
-      // Add urgency if available from AI analysis
-      if (donation.aiAnalysis?['urgency'] != null) {
-        donationData['urgency'] = donation.aiAnalysis!['urgency'];
+      // Add description if available
+      if (donation.description != null && donation.description!.isNotEmpty) {
+        donationData['description'] = donation.description;
       }
 
       final response = await _apiService.createDonation(donationData);
-      final newDonation = Donation.fromJson(response['data']);
+      debugPrint('🌐 Create Donation Response in provider: $response');
 
-      _donations.insert(0, newDonation);
-      _processingDonations[newDonation.id!] = true;
+      // Handle the response properly
+      if (response['success'] == true) {
+        final newDonation = Donation.fromJson(response['data']);
+        debugPrint('🌐 New Donation Created: ${newDonation.id}');
 
-      _isLoading = false;
-      notifyListeners();
+        _donations.insert(0, newDonation);
+        _processingDonations[newDonation.id!] = true;
 
-      // Start polling for AI processing status
-      if (imageFiles.isNotEmpty) {
-        _startPollingDonationStatus(newDonation.id!);
+        _isLoading = false;
+        notifyListeners();
+
+        // Start polling for AI processing status if images were uploaded
+        if (imageFiles.isNotEmpty) {
+          _startPollingDonationStatus(newDonation.id!);
+        }
+      } else {
+        throw Exception(response['message'] ?? 'Failed to create donation');
       }
     } catch (error) {
       _isLoading = false;
+      debugPrint('❌ Error creating donation: $error');
       _error = error.toString();
       notifyListeners();
       rethrow;
-    }
-  }
-
-  Future<List<String>> uploadImages(List<File> imageFiles) async {
-    try {
-      final response = await _apiService.uploadImages(imageFiles);
-      return List<String>.from(response['data']['images']);
-    } catch (error) {
-      throw Exception('Failed to upload images: $error');
     }
   }
 
@@ -92,11 +114,12 @@ class DonationProvider with ChangeNotifier {
     }
   }
 
-  Future<void> fetchAvailableDonations(
-      {int page = 1,
-      int limit = 10,
-      String? query,
-      List<String>? categories}) async {
+  Future<void> fetchAvailableDonations({
+    int page = 1,
+    int limit = 10,
+    String? query,
+    List<String>? categories,
+  }) async {
     try {
       _isLoading = true;
       _error = null;
@@ -187,8 +210,11 @@ class DonationProvider with ChangeNotifier {
     }
   }
 
-  Future<List<Donation>> searchDonations(String query,
-      {List<String>? categories, double? maxDistance}) async {
+  Future<List<Donation>> searchDonations(
+    String query, {
+    List<String>? categories,
+    double? maxDistance,
+  }) async {
     try {
       final response = await _apiService.searchDonations(
         query,
@@ -206,7 +232,7 @@ class DonationProvider with ChangeNotifier {
   void _startPollingDonationStatus(String donationId) {
     // Implement polling logic for AI processing status
     // This would periodically check the donation status until AI processing is complete
-    Future.delayed(Duration(seconds: 5), () async {
+    Future.delayed(const Duration(seconds: 5), () async {
       if (_processingDonations[donationId] == true) {
         try {
           final updatedDonation = await getDonationDetails(donationId);

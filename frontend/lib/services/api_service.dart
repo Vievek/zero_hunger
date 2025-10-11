@@ -311,6 +311,10 @@ class ApiService {
     return await _makeRequest('GET', endpoint);
   }
 
+Future<dynamic> analyzeFoodImages(List<String> imageUrls) async {
+    return await _makeRequest('POST', '/donations/analyze-images',
+        body: {'images': imageUrls});
+  }
   // FoodSafe AI endpoints
   Future<dynamic> askFoodSafetyQuestion(
       String question, String foodType) async {

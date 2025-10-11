@@ -86,7 +86,8 @@ router.post(
   donationController.uploadImages
 );
 
-// New routes for enhanced functionality
+// AI image analysis endpoint
+router.post("/analyze-images", donationController.analyzeFoodImages);
 
 // Update donation status
 router.patch(
