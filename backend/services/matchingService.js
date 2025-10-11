@@ -212,7 +212,7 @@ class MatchingService {
           )}, total=${totalScore.toFixed(2)}`
         );
 
-        if (totalScore > 0.3) {
+        if (totalScore > 0.2) {
           matches.push({
             recipient: recipient,
             semanticScore,
