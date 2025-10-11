@@ -9,7 +9,6 @@ exports.getRecipientDashboard = async (req, res) => {
 
     // Validate user is actually a recipient
     if (req.user.role !== "recipient") {
-      console.log("❌ User is not a recipient:", req.user.role);
       return res.status(403).json({
         success: false,
         message: "Access denied. User is not a recipient.",
@@ -18,11 +17,19 @@ exports.getRecipientDashboard = async (req, res) => {
 
     const recipient = await User.findById(req.user.id);
     if (!recipient) {
-      console.log("❌ Recipient not found:", req.user.id);
       return res.status(404).json({
         success: false,
         message: "Recipient not found",
       });
+    }
+
+    // Safely calculate current load with error handling
+    let currentLoad = 0;
+    try {
+      currentLoad = await recipient.getCurrentLoad();
+    } catch (loadError) {
+      console.error("❌ Error calculating current load:", loadError);
+      currentLoad = recipient.recipientDetails?.currentLoad || 0;
     }
 
     console.log(
@@ -30,16 +37,14 @@ exports.getRecipientDashboard = async (req, res) => {
       recipient.recipientDetails?.organizationName
     );
 
-    // Get all donations for this recipient (accepted, matched, available)
-    const [acceptedDonations, matchedDonations, availableDonations, stats] =
-      await Promise.all([
-        // Accepted donations (donations this recipient has accepted)
+    // Use Promise.allSettled to prevent one failed query from breaking everything
+    const [acceptedResult, matchedResult, availableResult, statsResult] =
+      await Promise.allSettled([
         Donation.find({ acceptedBy: req.user.id })
           .populate("donor", "name contactInfo donorDetails")
           .populate("assignedVolunteer", "name volunteerDetails")
           .sort({ createdAt: -1 }),
 
-        // Matched donations (donations offered to this recipient)
         Donation.find({
           "matchedRecipients.recipient": req.user.id,
           "matchedRecipients.status": { $in: ["offered", "accepted"] },
@@ -48,16 +53,19 @@ exports.getRecipientDashboard = async (req, res) => {
           .populate("donor", "name contactInfo donorDetails")
           .sort({ createdAt: -1 }),
 
-        // Available donations (all active donations this recipient can see)
         Donation.findAvailableForRecipient(req.user.id),
 
-        // Calculate stats
         this.calculateRecipientStats(req.user.id),
       ]);
 
-    console.log(
-      `📈 Stats: ${acceptedDonations.length} accepted, ${matchedDonations.length} matched, ${availableDonations.length} available`
-    );
+    // Handle results safely
+    const acceptedDonations =
+      acceptedResult.status === "fulfilled" ? acceptedResult.value : [];
+    const matchedDonations =
+      matchedResult.status === "fulfilled" ? matchedResult.value : [];
+    const availableDonations =
+      availableResult.status === "fulfilled" ? availableResult.value : [];
+    const stats = statsResult.status === "fulfilled" ? statsResult.value : {};
 
     res.json({
       success: true,
@@ -69,7 +77,7 @@ exports.getRecipientDashboard = async (req, res) => {
           organizationName: recipient.recipientDetails?.organizationName,
           organizationType: recipient.recipientDetails?.organizationType,
           capacity: recipient.recipientDetails?.capacity,
-          currentLoad: await recipient.getCurrentLoad(),
+          currentLoad: currentLoad,
           verificationStatus: recipient.recipientDetails?.verificationStatus,
           dietaryRestrictions: recipient.recipientDetails?.dietaryRestrictions,
           preferredFoodTypes: recipient.recipientDetails?.preferredFoodTypes,
@@ -85,7 +93,8 @@ exports.getRecipientDashboard = async (req, res) => {
     console.error("💥 Recipient dashboard error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to load recipient dashboard: " + error.message,
+      message: "Failed to load recipient dashboard",
+      error: process.env.NODE_ENV === "development" ? error.message : undefined,
     });
   }
 };
@@ -93,6 +102,8 @@ exports.getRecipientDashboard = async (req, res) => {
 // NEW: Calculate comprehensive recipient stats
 exports.calculateRecipientStats = async (recipientId) => {
   try {
+    const Donation = mongoose.model("Donation");
+
     const [totalAccepted, pendingPickup, delivered, activeOffers, totalImpact] =
       await Promise.all([
         Donation.countDocuments({ acceptedBy: recipientId }),
@@ -112,7 +123,7 @@ exports.calculateRecipientStats = async (recipientId) => {
         Donation.aggregate([
           {
             $match: {
-              acceptedBy: recipientId,
+              acceptedBy: mongoose.Types.ObjectId(recipientId),
               status: "delivered",
             },
           },
@@ -137,7 +148,7 @@ exports.calculateRecipientStats = async (recipientId) => {
       delivered,
       activeOffers,
       totalQuantity: impactResult.totalQuantity,
-      totalMeals: Math.round(impactResult.totalQuantity * 2.5), // Estimate meals
+      totalMeals: Math.round(impactResult.totalQuantity * 2.5),
       acceptanceRate:
         totalAccepted > 0 ? Math.round((delivered / totalAccepted) * 100) : 0,
     };
