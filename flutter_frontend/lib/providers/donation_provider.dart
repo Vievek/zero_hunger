@@ -275,6 +275,17 @@ class DonationProvider with ChangeNotifier {
   }
 
   Map<String, int> get donationStatsSummary {
+    // Use backend stats if available, fallback to local calculation
+    if (_donationStats.isNotEmpty) {
+      return {
+        'total': _donationStats['total'] ?? 0,
+        'active': _donationStats['active'] ?? 0,
+        'completed': _donationStats['completed'] ?? 0,
+        'pending': _donationStats['pending'] ?? 0,
+      };
+    }
+
+    // Fallback to local calculation if backend stats not available
     return {
       'total': _donations.length,
       'active': _donations

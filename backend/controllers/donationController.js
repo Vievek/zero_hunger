@@ -506,16 +506,18 @@ exports.getDonationStats = async (req, res) => {
     const donations = await Donation.find({ donor: userId });
 
     const stats = {
-      totalDonations: donations.length,
+      total: donations.length,
+      active: donations.filter((d) =>
+        ["active", "matched", "scheduled"].includes(d.status)
+      ).length,
+      completed: donations.filter((d) => d.status === "delivered").length,
+      pending: donations.filter((d) =>
+        ["pending", "ai_processing"].includes(d.status)
+      ).length,
       totalQuantity: donations.reduce(
         (sum, d) => sum + (d.quantity?.amount || 0),
         0
       ),
-      activeDonations: donations.filter((d) =>
-        ["active", "matched", "scheduled"].includes(d.status)
-      ).length,
-      completedDonations: donations.filter((d) => d.status === "delivered")
-        .length,
       totalImpact: donations
         .filter((d) => d.status === "delivered")
         .reduce((sum, d) => sum + (d.quantity?.amount || 0), 0),
