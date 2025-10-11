@@ -24,12 +24,7 @@ const userSchema = new mongoose.Schema(
       isActive: { type: Boolean, default: true },
     },
     recipientDetails: {
-      organizationName: {
-        type: String,
-        required: function () {
-          return this.role === "recipient";
-        },
-      },
+      organizationName: String,
       organizationType: {
         type: String,
         enum: [
@@ -39,9 +34,6 @@ const userSchema = new mongoose.Schema(
           "religious",
           "other",
         ],
-        required: function () {
-          return this.role === "recipient";
-        },
       },
       address: String,
       location: {
@@ -52,12 +44,9 @@ const userSchema = new mongoose.Schema(
         type: Number,
         default: 50,
         min: 1,
-        required: function () {
-          return this.role === "recipient";
-        },
       },
-      dietaryRestrictions: [String],
-      preferredFoodTypes: [String],
+      dietaryRestrictions: { type: [String], default: [] },
+      preferredFoodTypes: { type: [String], default: [] },
       verificationStatus: {
         type: String,
         enum: ["pending", "verified", "rejected"],
@@ -70,7 +59,7 @@ const userSchema = new mongoose.Schema(
         end: String,
       },
       isActive: { type: Boolean, default: true },
-      currentLoad: { type: Number, default: 0 }, // Track current donations
+      currentLoad: { type: Number, default: 0 },
     },
     volunteerDetails: {
       vehicleType: {
