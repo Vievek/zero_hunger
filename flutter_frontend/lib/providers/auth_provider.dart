@@ -3,16 +3,16 @@ import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/storage_service.dart';
 import '../services/google_auth_service.dart';
+import '../services/token_manager.dart';
 
 class AuthProvider with ChangeNotifier {
   User? _user;
-  String? _token;
   bool _isLoading = false;
   bool _isAuthenticated = false;
   String? _error;
 
   User? get user => _user;
-  String? get token => _token;
+  String? get token => _tokenManager.token;
   bool get isLoading => _isLoading;
   bool get isAuthenticated => _isAuthenticated;
   String? get error => _error;
@@ -20,6 +20,7 @@ class AuthProvider with ChangeNotifier {
   final ApiService _apiService = ApiService();
   final StorageService _storageService = StorageService();
   final GoogleAuthService _googleAuthService = GoogleAuthService();
+  final TokenManager _tokenManager = TokenManager();
 
   // Auto login on app start
   Future<void> autoLogin() async {
@@ -27,17 +28,12 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      final authData = await _storageService.getAuthData();
-      if (authData != null) {
-        _token = authData['token'];
-        debugPrint(
-            '🔄 AUTO LOGIN - Token found: ${_token?.substring(0, 10)}...');
+      // Load token from TokenManager
+      await _tokenManager.loadToken();
 
-        // ✅ Set the token in ApiService singleton
-        if (_token != null) {
-          _apiService.setAuthToken(_token!);
-          debugPrint('🔄 Token set in ApiService singleton');
-        }
+      if (_tokenManager.isAuthenticated) {
+        debugPrint(
+            '🔄 AUTO LOGIN - Token found: ${_tokenManager.token?.substring(0, 10)}...');
 
         // Verify token by getting user data
         try {
@@ -51,6 +47,7 @@ class AuthProvider with ChangeNotifier {
         } catch (userError) {
           debugPrint('Auto login user fetch failed: $userError');
           await _storageService.clearAuthData();
+          await _tokenManager.clearToken();
           _resetAuthState();
         }
       }
@@ -59,6 +56,7 @@ class AuthProvider with ChangeNotifier {
         print('Auto login failed: $error');
       }
       await _storageService.clearAuthData();
+      await _tokenManager.clearToken();
       _resetAuthState();
     } finally {
       _isLoading = false;
@@ -75,21 +73,15 @@ class AuthProvider with ChangeNotifier {
     try {
       final authResponse = await _apiService.login(email, password);
       _user = authResponse.user;
-      _token = authResponse.token;
       _isAuthenticated = true;
 
-      debugPrint('🔄 LOGIN SUCCESS - Token: ${_token?.substring(0, 10)}...');
-      debugPrint('🔄 Token length: ${_token?.length}');
-
-      // ✅ Set the token in ApiService singleton
-      if (_token != null) {
-        _apiService.setAuthToken(_token!);
-        debugPrint('🔄 Token propagated to ApiService singleton');
-      }
+      // ✅ Set token via TokenManager (handles persistence and propagation)
+      await _tokenManager.setToken(authResponse.token);
+      debugPrint('🔄 LOGIN SUCCESS - Token set via TokenManager');
 
       if (saveLogin) {
         await _storageService.saveAuthData(
-          _token!,
+          authResponse.token,
           _user!.toJson().toString(),
           saveLogin,
         );
@@ -137,21 +129,15 @@ class AuthProvider with ChangeNotifier {
       );
 
       _user = authResponse.user;
-      _token = authResponse.token;
       _isAuthenticated = true;
 
-      debugPrint('🔄 REGISTER SUCCESS - Token: ${_token?.substring(0, 10)}...');
-      debugPrint('🔄 Token length: ${_token?.length}');
-
-      // ✅ Set the token in ApiService singleton
-      if (_token != null) {
-        _apiService.setAuthToken(_token!);
-        debugPrint('🔄 Token propagated to ApiService singleton');
-      }
+      // ✅ Set token via TokenManager (handles persistence and propagation)
+      await _tokenManager.setToken(authResponse.token);
+      debugPrint('🔄 REGISTER SUCCESS - Token set via TokenManager');
 
       if (saveLogin) {
         await _storageService.saveAuthData(
-          _token!,
+          authResponse.token,
           _user!.toJson().toString(),
           saveLogin,
         );
@@ -187,21 +173,15 @@ class AuthProvider with ChangeNotifier {
       );
 
       _user = authResponse.user;
-      _token = authResponse.token;
       _isAuthenticated = true;
 
-      debugPrint(
-          '🔄 GOOGLE SIGNIN SUCCESS - Token: ${_token?.substring(0, 10)}...');
-
-      // ✅ Set the token in ApiService singleton
-      if (_token != null) {
-        _apiService.setAuthToken(_token!);
-        debugPrint('🔄 Token propagated to ApiService singleton');
-      }
+      // ✅ Set token via TokenManager (handles persistence and propagation)
+      await _tokenManager.setToken(authResponse.token);
+      debugPrint('🔄 GOOGLE SIGNIN SUCCESS - Token set via TokenManager');
 
       if (saveLogin) {
         await _storageService.saveAuthData(
-          _token!,
+          authResponse.token,
           _user!.toJson().toString(),
           saveLogin,
         );
@@ -232,12 +212,12 @@ class AuthProvider with ChangeNotifier {
     notifyListeners();
 
     try {
-      if (_user == null || _token == null) {
+      if (_user == null || !_tokenManager.isAuthenticated) {
         throw Exception('No user data available');
       }
 
       final updatedUser = await _apiService.completeProfile(
-        token: _token!,
+        token: _tokenManager.token!,
         role: role,
         phone: phone,
         address: address,
@@ -250,7 +230,7 @@ class AuthProvider with ChangeNotifier {
 
       if (saveLogin) {
         await _storageService.saveAuthData(
-          _token!,
+          _tokenManager.token!,
           _user!.toJson().toString(),
           saveLogin,
         );
@@ -292,9 +272,9 @@ class AuthProvider with ChangeNotifier {
 
       // Update stored user data
       final authData = await _storageService.getAuthData();
-      if (authData != null) {
+      if (authData != null && _tokenManager.isAuthenticated) {
         await _storageService.saveAuthData(
-          _token!,
+          _tokenManager.token!,
           _user!.toJson().toString(),
           true,
         );
@@ -315,7 +295,7 @@ class AuthProvider with ChangeNotifier {
     try {
       await _googleAuthService.signOut();
       await _storageService.clearAuthData();
-      await _apiService.clearAuthToken();
+      await _tokenManager.clearToken();
     } catch (error) {
       if (kDebugMode) {
         print('Logout error: $error');
@@ -329,7 +309,7 @@ class AuthProvider with ChangeNotifier {
   // Refresh user data
   Future<void> refreshUserData() async {
     try {
-      if (_token == null) return;
+      if (!_tokenManager.isAuthenticated) return;
 
       final user = await _apiService.getCurrentUser();
       _user = user;
@@ -337,9 +317,9 @@ class AuthProvider with ChangeNotifier {
 
       // Update stored user data
       final authData = await _storageService.getAuthData();
-      if (authData != null) {
+      if (authData != null && _tokenManager.isAuthenticated) {
         await _storageService.saveAuthData(
-          _token!,
+          _tokenManager.token!,
           _user!.toJson().toString(),
           true,
         );
@@ -353,7 +333,7 @@ class AuthProvider with ChangeNotifier {
   // Check token validity
   Future<bool> checkTokenValidity() async {
     try {
-      if (_token == null) return false;
+      if (!_tokenManager.isAuthenticated) return false;
 
       await _apiService.getCurrentUser();
       return true;
@@ -367,7 +347,6 @@ class AuthProvider with ChangeNotifier {
   // Helper methods
   void _resetAuthState() {
     _user = null;
-    _token = null;
     _isAuthenticated = false;
     _error = null;
   }
@@ -395,7 +374,7 @@ class AuthProvider with ChangeNotifier {
 
   // Validate session
   Future<bool> validateSession() async {
-    if (_token == null || _user == null) {
+    if (!_tokenManager.isAuthenticated || _user == null) {
       return false;
     }
 

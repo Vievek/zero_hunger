@@ -3,8 +3,8 @@ import 'package:provider/provider.dart';
 import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/dashboard_appbar.dart';
 import 'create_donation_screen.dart';
-import 'welcome_screen.dart';
 
 class DonorDashboardScreen extends StatefulWidget {
   const DonorDashboardScreen({super.key});
@@ -22,33 +22,6 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
       Provider.of<DonationProvider>(context, listen: false)
           .fetchDonationStats();
     });
-  }
-   void _showLogoutDialog(BuildContext context) {
-  showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Provider.of<AuthProvider>(context, listen: false).logout();
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-                (route) => false,
-              );
-            },
-            child: const Text('Logout', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -68,14 +41,8 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
         backgroundColor: Theme.of(context).primaryColor,
         child: const Icon(Icons.add, color: Colors.white),
       ),
-      appBar: AppBar(
-        title: const Text('Donor Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _showLogoutDialog(context),
-          ),
-        ],
+      appBar: const DashboardAppBar(
+        title: 'Donor Dashboard',
       ),
       body: donationProvider.isLoading
           ? const Center(child: CircularProgressIndicator())

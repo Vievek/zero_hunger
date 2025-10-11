@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
-import '../providers/auth_provider.dart';
-import 'welcome_screen.dart';
+import '../widgets/dashboard_appbar.dart';
 
 class RecipientDashboardScreen extends StatefulWidget {
   const RecipientDashboardScreen({super.key});
@@ -39,47 +38,13 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
     );
   }
 
-  void _showLogoutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Logout'),
-        content: const Text('Are you sure you want to logout?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Provider.of<AuthProvider>(context, listen: false).logout();
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-                (route) => false,
-              );
-            },
-            child: const Text('Logout', style: TextStyle(color: Colors.red)),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final donationProvider = Provider.of<DonationProvider>(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Recipient Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () => _showLogoutDialog(context),
-          ),
-        ],
+      appBar: const DashboardAppBar(
+        title: 'Recipient Dashboard',
       ),
       body: donationProvider.isLoading
           ? const Center(child: CircularProgressIndicator())
@@ -759,4 +724,3 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
     );
   }
 }
-

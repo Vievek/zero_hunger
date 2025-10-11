@@ -2,51 +2,51 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
+import 'token_manager.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
   factory ApiService() => _instance;
-  ApiService._internal();
+  ApiService._internal() {
+    // Initialize token manager listener
+    _tokenManager.tokenStream.listen((token) {
+      debugPrint('🔐 ApiService: Received token update from TokenManager');
+    });
+  }
 
   static const String baseUrl = 'https://zero-hunger-three.vercel.app/api';
-  String? _authToken;
+  final TokenManager _tokenManager = TokenManager();
 
-  // Enhanced token management
+  // Token management methods (now delegated to TokenManager)
   Future<void> setAuthToken(String token) async {
-    debugPrint('🔐 SETTING AUTH TOKEN: ${token.substring(0, 10)}...');
-    _authToken = token;
-
-    // Persist token
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('auth_token', token);
-    debugPrint('🔐 Token saved to shared preferences');
+    debugPrint('🔐 ApiService: Setting auth token via TokenManager');
+    await _tokenManager.setToken(token);
   }
 
   Future<void> loadAuthToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    _authToken = prefs.getString('auth_token');
-    debugPrint('🔐 Loaded auth token from storage: ${_authToken != null}');
+    debugPrint('🔐 ApiService: Loading auth token via TokenManager');
+    await _tokenManager.loadToken();
   }
 
   Future<void> clearAuthToken() async {
-    _authToken = null;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('auth_token');
-    debugPrint('🔐 Auth token cleared');
+    debugPrint('🔐 ApiService: Clearing auth token via TokenManager');
+    await _tokenManager.clearToken();
   }
+
+  String? get authToken => _tokenManager.token;
 
   Map<String, String> _getHeaders() {
     final headers = {
       'Content-Type': 'application/json',
     };
 
-    if (_authToken != null && _authToken!.isNotEmpty) {
-      headers['Authorization'] = 'Bearer $_authToken';
-      debugPrint('🔐 Adding Authorization header to request');
+    final authHeader = _tokenManager.getAuthHeader();
+    if (authHeader != null) {
+      headers['Authorization'] = authHeader;
+      debugPrint('🔐 ApiService: Adding Authorization header to request');
     } else {
-      debugPrint('🔐 No auth token available for request');
+      debugPrint('🔐 ApiService: No auth token available for request');
     }
 
     return headers;
@@ -60,7 +60,7 @@ class ApiService {
     bool requiresAuth = true,
   }) async {
     try {
-      if (requiresAuth && _authToken == null) {
+      if (requiresAuth && !_tokenManager.isAuthenticated) {
         await loadAuthToken();
       }
 
@@ -252,8 +252,9 @@ class ApiService {
           'POST', Uri.parse('$baseUrl/donations/upload-images'));
 
       // Add authorization header
-      if (_authToken != null) {
-        request.headers['Authorization'] = 'Bearer $_authToken';
+      final authHeader = _tokenManager.getAuthHeader();
+      if (authHeader != null) {
+        request.headers['Authorization'] = authHeader;
       }
 
       // Add images
@@ -311,10 +312,11 @@ class ApiService {
     return await _makeRequest('GET', endpoint);
   }
 
-Future<dynamic> analyzeFoodImages(List<String> imageUrls) async {
+  Future<dynamic> analyzeFoodImages(List<String> imageUrls) async {
     return await _makeRequest('POST', '/donations/analyze-images',
         body: {'images': imageUrls});
   }
+
   // FoodSafe AI endpoints
   Future<dynamic> askFoodSafetyQuestion(
       String question, String foodType) async {

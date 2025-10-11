@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/logistics_provider.dart';
+import '../widgets/dashboard_appbar.dart';
 
 class VolunteerDashboardScreen extends StatefulWidget {
   const VolunteerDashboardScreen({super.key});
@@ -24,6 +25,9 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
     final logisticsProvider = Provider.of<LogisticsProvider>(context);
 
     return Scaffold(
+      appBar: const DashboardAppBar(
+        title: 'Volunteer Dashboard',
+      ),
       body: Column(
         children: [
           // Welcome Header
