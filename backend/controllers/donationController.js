@@ -358,13 +358,12 @@ exports.createDonation = async (req, res) => {
   }
 };
 
-exports.acceptDonationOffer = async (req, res) => {
+exports.acceptDonation = async (req, res) => {
   try {
     const { donationId } = req.params;
-    console.log(`✅ ${req.user.role} ${req.user.id} accepting donation: ${donationId} in donationController`);
+    console.log("✅ Accepting donation:", donationId, "by user:", req.user.id);
 
     const donation = await Donation.findById(donationId);
-    console.log("🔍 Donation fetched:", donation ? donation._id : "Not found");
     if (!donation) {
       return res.status(404).json({
         success: false,
@@ -372,169 +371,130 @@ exports.acceptDonationOffer = async (req, res) => {
       });
     }
 
-    // DEBUG: Log donation details
-    console.log("🔍 Donation details:", {
-      donationId: donation._id,
-      status: donation.status,
-      matchedRecipients: donation.matchedRecipients?.map((match) => ({
-        recipient: match.recipient?.toString(),
-        status: match.status,
-      })),
-      currentUser: req.user.id,
-    });
-
-    // Check if donation is available for acceptance
-    if (donation.status !== 'active') {
-      return res.status(400).json({
+    // Check if user is a recipient
+    if (req.user.role !== "recipient") {
+      return res.status(403).json({
         success: false,
-        message: `Donation is not available for acceptance. Current status: ${donation.status}`,
+        message: "Only recipients can accept donations",
+      });
+    }
+
+    const recipientMatch = donation.matchedRecipients.find(
+      (match) => match.recipient.toString() === req.user.id
+    );
+
+    if (!recipientMatch) {
+      return res.status(403).json({
+        success: false,
+        message: "Not authorized to accept this donation",
       });
     }
 
     // Check if recipient can accept more donations
     const recipient = await User.findById(req.user.id);
-    const canAccept = await recipient.canAcceptDonation(donation.quantity.amount);
+    const canAccept = await recipient.canAcceptDonation(
+      donation.quantity.amount
+    );
 
     if (!canAccept) {
       return res.status(400).json({
         success: false,
-        message: "You have reached your capacity limit. Cannot accept more donations at this time.",
+        message:
+          "You have reached your capacity limit. Cannot accept more donations at this time.",
       });
     }
 
-    // Check if this donation is already offered to the recipient
-    const existingMatch = donation.matchedRecipients?.find(
-      (match) => match.recipient?.toString() === req.user.id
-    );
-
-    let recipientMatch;
-
-    if (existingMatch) {
-      // If already in matchedRecipients, update the status
-      recipientMatch = existingMatch;
-      
-      if (recipientMatch.status === 'offered') {
-        recipientMatch.status = 'accepted';
-        recipientMatch.respondedAt = new Date();
-        console.log(`🔄 Updated existing match to accepted for donation: ${donationId}`);
-      } else {
-        console.log(`ℹ️ Recipient already has match with status: ${recipientMatch.status}`);
-      }
-    } else {
-      // If not in matchedRecipients, create a new match entry
-      recipientMatch = {
-        recipient: req.user.id,
-        matchScore: 0.7, // Good score for manual acceptance
-        status: "accepted",
-        respondedAt: new Date(),
-        matchingMethod: "manual_acceptance",
-        matchReasons: ["Manually accepted by recipient"],
-        createdAt: new Date()
-      };
-      
-      donation.matchedRecipients.push(recipientMatch);
-      console.log(`🆕 Created new match entry for manual acceptance`);
-    }
-
-    // Update donation status and acceptedBy
+    // Update donation status
     donation.acceptedBy = req.user.id;
     donation.status = "matched";
-    donation.updatedAt = new Date();
+    recipientMatch.status = "accepted";
+    recipientMatch.respondedAt = new Date();
 
-    // Decline other pending offers for this donation
-    if (donation.matchedRecipients && donation.matchedRecipients.length > 0) {
-      donation.matchedRecipients.forEach((match) => {
-        if (
-          match.recipient?.toString() !== req.user.id &&
-          match.status === "offered"
-        ) {
-          match.status = "declined";
-          match.respondedAt = new Date();
-          match.declineReason = "Another recipient accepted the donation";
-        }
-      });
-    }
+    // Decline other offers for this donation
+    donation.matchedRecipients.forEach((match) => {
+      if (
+        match.recipient.toString() !== req.user.id &&
+        match.status === "offered"
+      ) {
+        match.status = "declined";
+        match.respondedAt = new Date();
+        match.declineReason = "Another recipient accepted the donation";
+      }
+    });
 
     await donation.save();
-    console.log(`💾 Donation ${donationId} saved with accepted status`);
 
-    // Create logistics task
+    // Create logistics task with urgency consideration
     const donor = await User.findById(donation.donor);
-    const taskData = {
+
+    const task = new LogisticsTask({
       donation: donationId,
       pickupLocation: {
         address: donation.pickupAddress,
         lat: donation.location.lat,
         lng: donation.location.lng,
-        instructions: `Pick up from ${donor?.name || 'Donor'}`
+        instructions: `Pick up from ${donor.name}`,
       },
       dropoffLocation: {
-        address: recipient.recipientDetails?.address || recipient.contactInfo?.address || donation.pickupAddress,
-        lat: recipient.recipientDetails?.location?.lat || recipient.contactInfo?.location?.lat || donation.location.lat,
-        lng: recipient.recipientDetails?.location?.lng || recipient.contactInfo?.location?.lng || donation.location.lng,
-        contactPerson: recipient.recipientDetails?.organizationName || recipient.name,
-        phone: recipient.contactInfo?.phone
+        address:
+          recipient.recipientDetails?.address ||
+          recipient.contactInfo?.address ||
+          donation.pickupAddress,
+        lat:
+          recipient.recipientDetails?.location?.lat ||
+          recipient.contactInfo?.location?.lat ||
+          donation.location.lat,
+        lng:
+          recipient.recipientDetails?.location?.lng ||
+          recipient.contactInfo?.location?.lng ||
+          donation.location.lng,
+        contactPerson:
+          recipient.recipientDetails?.organizationName || recipient.name,
+        phone: recipient.contactInfo?.phone,
       },
-      scheduledPickupTime: donation.type === 'bulk' && donation.scheduledPickup 
-        ? donation.scheduledPickup 
-        : new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
+      scheduledPickupTime:
+        donation.type === "bulk"
+          ? donation.scheduledPickup
+          : new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
       status: "pending",
       urgency: donation.urgency || "normal",
-      specialInstructions: donation.aiAnalysis?.suggestedHandling || "Handle with care"
-    };
+      specialInstructions:
+        donation.aiAnalysis?.suggestedHandling || "Handle with care",
+    });
 
-    console.log("📦 Creating logistics task:", taskData);
-
-    const LogisticsTask = require("../models/LogisticsTask");
-    const task = new LogisticsTask(taskData);
     await task.save();
     console.log("✅ Logistics task created:", task._id);
 
-    // Assign volunteer asynchronously (don't wait for it)
-    const donationController = require('./donationController');
-    donationController.assignVolunteerToTask(task._id).catch(error => {
-      console.error("❌ Volunteer assignment failed:", error);
-      // Continue even if volunteer assignment fails
-    });
+    // Assign volunteer using enhanced GA
+    await assignVolunteerToTask(task._id);
 
-    // Send notifications asynchronously
-    const notificationService = require('../services/notificationService');
-    notificationService.sendStatusUpdate(
+    // Send notifications
+    await notificationService.sendStatusUpdate(
       donation.donor,
       "Donation Accepted! 🎉",
-      `Your donation "${donation.aiDescription || donation.description || 'Food Donation'}" has been accepted by ${recipient.recipientDetails?.organizationName || recipient.name}`,
+      `Your donation "${
+        donation.aiDescription || donation.description
+      }" has been accepted by ${
+        recipient.recipientDetails?.organizationName || recipient.name
+      }`,
       { donationId: donation._id, recipientId: req.user.id }
-    ).catch(error => {
-      console.error("❌ Notification failed:", error);
-    });
+    );
 
-    // Populate and return the updated donation
     const populatedDonation = await Donation.findById(donationId)
-      .populate("donor", "name contactInfo donorDetails")
       .populate("acceptedBy", "name recipientDetails")
-      .populate("assignedVolunteer", "name volunteerDetails")
-      .populate("matchedRecipients.recipient", "name recipientDetails");
-
-    console.log(`🎉 Donation ${donationId} successfully accepted by ${req.user.id}`);
+      .populate("assignedVolunteer", "name")
+      .populate("donor", "name contactInfo");
 
     res.json({
       success: true,
-      data: { 
-        donation: populatedDonation, 
-        task: {
-          id: task._id,
-          status: task.status,
-          scheduledPickupTime: task.scheduledPickupTime
-        }
-      },
-      message: "Donation accepted successfully! A volunteer will be assigned for pickup soon."
+      data: { donation: populatedDonation, task },
+      message: "Donation accepted successfully",
     });
-
   } catch (error) {
-    console.error("💥 Accept donation error:", error);
+    console.error("💥 Donation acceptance error:", error);
     res.status(500).json({
       success: false,
-      message: "Failed to accept donation: " + error.message,
+      message: error.message,
     });
   }
 };
