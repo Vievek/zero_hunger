@@ -283,13 +283,13 @@ exports.getMatchedDonations = async (req, res) => {
 };
 
 
-// ENHANCED: Accept donation offer (works for both matched and non-matched donations)
 exports.acceptDonationOffer = async (req, res) => {
   try {
     const { donationId } = req.params;
     console.log(`✅ Recipient ${req.user.id} accepting donation: ${donationId}`);
 
     const donation = await Donation.findById(donationId);
+    console.log("🔍 Donation fetched:", donation ? donation._id : "Not found");
     if (!donation) {
       return res.status(404).json({
         success: false,
