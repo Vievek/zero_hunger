@@ -5,7 +5,6 @@ const { auth, requireRole } = require("../middleware/auth");
 
 console.log("🔧 Loading Recipient routes...");
 
-
 // Apply authentication and role check to all routes
 router.use(auth);
 router.use(requireRole(["recipient"]));

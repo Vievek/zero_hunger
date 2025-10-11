@@ -160,7 +160,7 @@ class DonationProvider with ChangeNotifier {
       _error = null;
       notifyListeners();
 
-      await _apiService.acceptDonation(donationId);
+      await _apiService.acceptDonationOffer(donationId);
 
       // Remove from available donations and add to my donations
       final acceptedDonationIndex =
@@ -309,7 +309,7 @@ class DonationProvider with ChangeNotifier {
       final response = await _apiService.getAllAvailableDonations(
         page: page,
         limit: limit,
-        query: query,
+        search: query,
         categories: categories,
       );
 

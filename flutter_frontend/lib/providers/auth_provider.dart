@@ -217,7 +217,7 @@ class AuthProvider with ChangeNotifier {
       }
 
       final updatedUser = await _apiService.completeProfile(
-        token: _tokenManager.token!,
+        // REMOVED: token: _tokenManager.token!,
         role: role,
         phone: phone,
         address: address,
@@ -245,7 +245,6 @@ class AuthProvider with ChangeNotifier {
       rethrow;
     }
   }
-
   // Update user profile
   Future<void> updateProfile({
     String? name,

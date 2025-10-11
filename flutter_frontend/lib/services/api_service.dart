@@ -174,7 +174,6 @@ class ApiService {
   }
 
   Future<User> completeProfile({
-    required String token,
     required String role,
     required String phone,
     required String address,
@@ -243,9 +242,7 @@ class ApiService {
     return await _makeRequest('GET', endpoint);
   }
 
-  Future<dynamic> acceptDonation(String donationId) async {
-    return await _makeRequest('POST', '/donations/$donationId/accept');
-  }
+  // REMOVED: Old acceptDonation method - use acceptDonationOffer instead
 
   Future<dynamic> uploadImages(List<File> imageFiles) async {
     try {
@@ -471,73 +468,101 @@ class ApiService {
     }
     return error.toString();
   }
-// ADD these methods to your existing ApiService class
 
-// NEW: Recipient dashboard
+  // ========== RECIPIENT SPECIFIC ENDPOINTS ==========
+
+  // Recipient dashboard
   Future<dynamic> getRecipientDashboard() async {
     return await _makeRequest('GET', '/recipient/dashboard');
   }
 
-// NEW: Get all available donations for recipient
+  // Get all available donations for recipient (enhanced)
   Future<dynamic> getAllAvailableDonations({
     int page = 1,
     int limit = 10,
-    String? query,
+    String? search,
     List<String>? categories,
+    double? maxDistance,
   }) async {
     String endpoint = '/recipient/donations/available?page=$page&limit=$limit';
 
-    if (query != null && query.isNotEmpty) {
-      endpoint += '&search=${Uri.encodeComponent(query)}';
+    if (search != null && search.isNotEmpty) {
+      endpoint += '&search=${Uri.encodeComponent(search)}';
     }
 
     if (categories != null && categories.isNotEmpty) {
       endpoint += '&categories=${categories.join(',')}';
     }
 
+    if (maxDistance != null) {
+      endpoint += '&maxDistance=$maxDistance';
+    }
+
     return await _makeRequest('GET', endpoint);
   }
 
-// NEW: Get matched donations
+  // Get matched donations
   Future<dynamic> getMatchedDonations({String status = 'offered'}) async {
     return await _makeRequest(
         'GET', '/recipient/donations/matched?status=$status');
   }
 
-// NEW: Update recipient profile
+  // Update recipient profile
   Future<dynamic> updateRecipientProfile(
       Map<String, dynamic> profileData) async {
     return await _makeRequest('PUT', '/recipient/profile', body: profileData);
   }
 
-// NEW: Get recipient stats
+  // Get recipient stats
   Future<dynamic> getRecipientStats() async {
     return await _makeRequest('GET', '/recipient/stats');
   }
 
-// NEW: Accept donation offer
+  // Accept donation offer (NEW - use this instead of old acceptDonation)
   Future<dynamic> acceptDonationOffer(String donationId) async {
     return await _makeRequest(
         'POST', '/recipient/donations/$donationId/accept');
   }
 
-// NEW: Decline donation offer
+  // Decline donation offer
   Future<dynamic> declineDonationOffer(String donationId,
       {String? reason}) async {
     return await _makeRequest(
         'POST', '/recipient/donations/$donationId/decline',
         body: {'reason': reason});
   }
-  // NEW: Get available tasks near volunteer
+
+  // ========== VOLUNTEER SPECIFIC ENDPOINTS ==========
+
+  // Get available tasks near volunteer
   Future<dynamic> getAvailableTasks() async {
     return await _makeRequest('GET', '/logistics/tasks/available');
   }
 
-// NEW: Accept a task manually
+  // Accept a task manually
   Future<dynamic> acceptTask(String taskId) async {
     return await _makeRequest('POST', '/logistics/tasks/$taskId/accept');
   }
 
- 
+  // ========== ADMIN SPECIFIC ENDPOINTS ==========
 
+  // Get pending verifications
+  Future<dynamic> getPendingVerifications() async {
+    return await _makeRequest('GET', '/admin/verifications/pending');
+  }
+
+  // Verify recipient
+  Future<dynamic> verifyRecipient(String userId, String status,
+      {String? notes}) async {
+    return await _makeRequest('PUT', '/admin/verifications/$userId/verify',
+        body: {
+          'status': status,
+          if (notes != null) 'notes': notes,
+        });
+  }
+
+  // Get platform statistics
+  Future<dynamic> getPlatformStats() async {
+    return await _makeRequest('GET', '/admin/stats/platform');
+  }
 }

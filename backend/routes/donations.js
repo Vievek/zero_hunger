@@ -82,12 +82,7 @@ router.get(
   donationController.getAvailableDonations
 );
 
-// Accept donation
-router.post(
-  "/:donationId/accept",
-  requireRole(["recipient"]),
-  donationController.acceptDonation
-);
+// REMOVED: /:donationId/accept route - moved to recipient routes
 
 // Get donation details
 router.get("/:donationId", donationController.getDonationDetails);
