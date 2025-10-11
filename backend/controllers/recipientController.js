@@ -298,75 +298,41 @@ exports.acceptDonationOffer = async (req, res) => {
       });
     }
 
+    // DEBUG: Log donation details
+    console.log("🔍 Donation details:", {
+      donationId: donation._id,
+      status: donation.status,
+      matchedRecipients: donation.matchedRecipients.map((match) => ({
+        recipient: match.recipient.toString(),
+        status: match.status,
+      })),
+      currentUser: req.user.id,
+    });
+
     // Check if this donation is offered to the recipient
     const recipientMatch = donation.matchedRecipients.find(
       (match) =>
         match.recipient.toString() === req.user.id && match.status === "offered"
     );
 
+    console.log("🔍 Found recipient match:", recipientMatch);
+
     if (!recipientMatch) {
+      // More detailed error message
+      const availableMatches = donation.matchedRecipients.filter(
+        (m) => m.recipient.toString() === req.user.id
+      );
+      console.log("❌ Available matches for user:", availableMatches);
+
       return res.status(403).json({
         success: false,
-        message: "This donation is not offered to you or has expired",
-      });
-    }
-
-    // Check if recipient has capacity
-    const recipient = await User.findById(req.user.id);
-    const canAccept = await recipient.canAcceptDonation();
-
-    if (!canAccept) {
-      return res.status(400).json({
-        success: false,
         message:
-          "You have reached your capacity limit. Cannot accept more donations at this time.",
+          "This donation is not offered to you or has expired. Available matches: " +
+          JSON.stringify(availableMatches),
       });
     }
 
-    // Update donation status
-    donation.acceptedBy = req.user.id;
-    donation.status = "matched";
-    recipientMatch.status = "accepted";
-    recipientMatch.respondedAt = new Date();
-
-    // Decline other offers for this donation
-    donation.matchedRecipients.forEach((match) => {
-      if (
-        match.recipient.toString() !== req.user.id &&
-        match.status === "offered"
-      ) {
-        match.status = "declined";
-        match.respondedAt = new Date();
-      }
-    });
-
-    await donation.save();
-
-    // Notify donor
-    await notificationService.sendStatusUpdate(
-      donation.donor,
-      "Donation Accepted! 🎉",
-      `Your donation "${
-        donation.aiDescription || donation.description
-      }" has been accepted by ${
-        recipient.recipientDetails?.organizationName || recipient.name
-      }`,
-      { donationId: donation._id, recipientId: req.user.id }
-    );
-
-    console.log(
-      `✅ Donation ${donationId} accepted successfully by ${req.user.id}`
-    );
-
-    const updatedDonation = await Donation.findById(donationId)
-      .populate("donor", "name contactInfo")
-      .populate("acceptedBy", "name recipientDetails");
-
-    res.json({
-      success: true,
-      data: updatedDonation,
-      message: "Donation accepted successfully! The donor has been notified.",
-    });
+    // ... rest of your existing code
   } catch (error) {
     console.error("💥 Accept donation error:", error);
     res.status(500).json({
