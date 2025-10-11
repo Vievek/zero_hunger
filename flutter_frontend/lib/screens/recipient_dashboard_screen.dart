@@ -4,6 +4,8 @@ import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
 import 'recipient_matched_donations_screen.dart';
 import 'recipient_all_donations_screen.dart';
+import '../widgets/dashboard_appbar.dart';
+
 
 class RecipientDashboardScreen extends StatefulWidget {
   const RecipientDashboardScreen({super.key});
@@ -44,9 +46,9 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
     return DefaultTabController(
       length: 3, // Three tabs
       child: Scaffold(
-        appBar: AppBar(
-          title: const Text('Recipient Dashboard'),
-          bottom: const TabBar(
+        appBar: const DashboardAppBar(
+          title: 'Recipient Dashboard',
+          bottom:  TabBar(
             tabs: [
               Tab(icon: Icon(Icons.dashboard), text: 'Overview'),
               Tab(icon: Icon(Icons.list_alt), text: 'All Donations'),

@@ -7,17 +7,20 @@ import '../screens/welcome_screen.dart';
 class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
+  final PreferredSizeWidget? bottom; // Add this line
 
   const DashboardAppBar({
     super.key,
     required this.title,
     this.actions,
+    this.bottom, // Add this parameter
   });
 
   @override
   Widget build(BuildContext context) {
     return AppBar(
       title: Text(title),
+      bottom: bottom, // Pass it to the AppBar
       actions: [
         // Custom actions passed from screen
         ...?actions,
@@ -80,5 +83,11 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
   }
 
   @override
-  Size get preferredSize => const Size.fromHeight(kToolbarHeight);
+  Size get preferredSize {
+    // Adjust preferred size if bottom widget is present
+    if (bottom != null) {
+      return Size.fromHeight(kToolbarHeight + bottom!.preferredSize.height);
+    }
+    return const Size.fromHeight(kToolbarHeight);
+  }
 }
