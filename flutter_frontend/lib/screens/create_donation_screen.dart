@@ -156,6 +156,55 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     }
   }
 
+  Future<void> _searchLocationWithGooglePlaces() async {
+    try {
+      // Show a simple text search dialog for now
+      final String? searchQuery = await showDialog<String>(
+        context: context,
+        builder: (context) => _LocationSearchDialog(),
+      );
+
+      if (searchQuery != null && searchQuery.isNotEmpty) {
+        await _geocodeLocation(searchQuery);
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to search location: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _geocodeLocation(String address) async {
+    try {
+      List<Location> locations =
+          await locationFromAddress('$address, Sri Lanka');
+
+      if (locations.isNotEmpty) {
+        final Location location = locations.first;
+        final LatLng newLocation =
+            LatLng(location.latitude, location.longitude);
+
+        setState(() {
+          _selectedLocation = newLocation;
+          _addressController.text = address;
+          _addMarker(newLocation);
+        });
+
+        _mapController?.animateCamera(
+          CameraUpdate.newLatLngZoom(newLocation, 15),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to find location: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _searchLocation(String query) async {
     if (query.isEmpty) return;
 
@@ -208,7 +257,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       final donationProvider =
           Provider.of<DonationProvider>(context, listen: false);
 
-      // Call the actual AI analysis endpoint
+      // ✅ Call the actual AI analysis endpoint with proper file handling
       final aiAnalysis =
           await donationProvider.analyzeFoodImages(_selectedImages);
 
@@ -219,11 +268,18 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           _descriptionController.text = aiAnalysis['description'];
         }
 
+        // Clear and add new categories from AI analysis
         _selectedCategories.clear();
-        _selectedCategories.addAll(aiAnalysis['categories'] ?? []);
+        if (aiAnalysis['categories'] != null) {
+          _selectedCategories
+              .addAll(List<String>.from(aiAnalysis['categories']));
+        }
 
+        // Clear and add new tags from AI analysis
         _selectedTags.clear();
-        _selectedTags.addAll(aiAnalysis['dietaryInfo'] ?? []);
+        if (aiAnalysis['dietaryInfo'] != null) {
+          _selectedTags.addAll(List<String>.from(aiAnalysis['dietaryInfo']));
+        }
 
         _isAnalyzingImages = false;
       });
@@ -681,23 +737,72 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
             Expanded(
               child: TextFormField(
                 controller: _addressController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Search or enter address',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.search),
+                  border: const OutlineInputBorder(),
+                  prefixIcon: const Icon(Icons.search),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.place),
+                    onPressed: _searchLocationWithGooglePlaces,
+                    tooltip: 'Search with Google Places',
+                  ),
                 ),
                 onChanged: (value) {
                   if (value.length > 3) {
                     _searchLocation(value);
                   }
                 },
+                validator: (value) {
+                  if (value == null || value.isEmpty) {
+                    return 'Please enter or select a pickup location';
+                  }
+                  return null;
+                },
               ),
             ),
             const SizedBox(width: 8),
             IconButton(
-              icon: const Icon(Icons.my_location),
+              icon: Icon(
+                Icons.my_location,
+                color: _isGettingLocation
+                    ? Colors.grey
+                    : Theme.of(context).primaryColor,
+              ),
               onPressed: _isGettingLocation ? null : _getCurrentLocation,
               tooltip: 'Use current location',
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _searchLocationWithGooglePlaces,
+                icon: const Icon(Icons.search_outlined),
+                label: const Text('Search Places'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: _isGettingLocation ? null : _getCurrentLocation,
+                icon: _isGettingLocation
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.gps_fixed),
+                label: Text(
+                    _isGettingLocation ? 'Getting...' : 'Current Location'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
             ),
           ],
         ),
@@ -861,9 +966,41 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
       );
 
       if (image != null && mounted) {
-        setState(() {
-          _selectedImages.add(File(image.path));
-        });
+        // Validate image file before adding
+        final File imageFile = File(image.path);
+
+        // Check if file exists and is readable
+        if (await imageFile.exists()) {
+          // Check file size (max 5MB)
+          final fileSize = await imageFile.length();
+          if (fileSize > 5 * 1024 * 1024) {
+            throw Exception('Image size must be less than 5MB');
+          }
+
+          // Check file extension
+          final fileName = image.name.toLowerCase();
+          final validExtensions = [
+            '.jpg',
+            '.jpeg',
+            '.png',
+            '.gif',
+            '.bmp',
+            '.webp'
+          ];
+          final hasValidExtension =
+              validExtensions.any((ext) => fileName.endsWith(ext));
+
+          if (!hasValidExtension) {
+            throw Exception(
+                'Only image files are allowed (jpg, png, gif, etc.)');
+          }
+
+          setState(() {
+            _selectedImages.add(imageFile);
+          });
+        } else {
+          throw Exception('Selected file is not accessible');
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -1014,5 +1151,65 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         });
       }
     }
+  }
+}
+
+class _LocationSearchDialog extends StatefulWidget {
+  @override
+  _LocationSearchDialogState createState() => _LocationSearchDialogState();
+}
+
+class _LocationSearchDialogState extends State<_LocationSearchDialog> {
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Search Location'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: _searchController,
+            decoration: const InputDecoration(
+              hintText: 'Enter location name or address...',
+              prefixIcon: Icon(Icons.search),
+              border: OutlineInputBorder(),
+            ),
+            autofocus: true,
+            onSubmitted: (value) {
+              if (value.isNotEmpty) {
+                Navigator.of(context).pop(value);
+              }
+            },
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Search will be limited to Sri Lanka',
+            style: TextStyle(fontSize: 12, color: Colors.grey),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () {
+            if (_searchController.text.isNotEmpty) {
+              Navigator.of(context).pop(_searchController.text);
+            }
+          },
+          child: const Text('Search'),
+        ),
+      ],
+    );
   }
 }

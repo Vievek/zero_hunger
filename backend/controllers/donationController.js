@@ -336,6 +336,7 @@ exports.getAvailableDonations = async (req, res) => {
 exports.uploadImages = async (req, res) => {
   try {
     console.log("Uploading images...");
+    console.log("Files received:", req.files?.length || 0);
 
     if (!req.files || req.files.length === 0) {
       return res.status(400).json({
@@ -344,17 +345,53 @@ exports.uploadImages = async (req, res) => {
       });
     }
 
-    const uploadPromises = req.files.map((file) => {
+    // Validate each file
+    for (let i = 0; i < req.files.length; i++) {
+      const file = req.files[i];
+      console.log(`File ${i + 1}:`, {
+        mimetype: file.mimetype,
+        size: file.size,
+        originalname: file.originalname,
+      });
+
+      // Check if it's actually an image
+      if (!file.mimetype.startsWith("image/")) {
+        return res.status(400).json({
+          success: false,
+          message: `File ${file.originalname} is not a valid image file`,
+        });
+      }
+
+      // Check file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        return res.status(400).json({
+          success: false,
+          message: `File ${file.originalname} is too large. Maximum size is 10MB`,
+        });
+      }
+    }
+
+    const uploadPromises = req.files.map((file, index) => {
       return new Promise((resolve, reject) => {
         cloudinary.uploader
           .upload_stream(
             {
               resource_type: "image",
               folder: "zero_hunger/donations",
+              transformation: [
+                { quality: "auto:good" },
+                { fetch_format: "auto" },
+                { width: 1200, height: 1200, crop: "limit" },
+              ],
             },
             (error, result) => {
-              if (error) reject(error);
-              else resolve(result.secure_url);
+              if (error) {
+                console.error(`Upload error for file ${index + 1}:`, error);
+                reject(error);
+              } else {
+                console.log(`File ${index + 1} uploaded successfully`);
+                resolve(result.secure_url);
+              }
             }
           )
           .end(file.buffer);
@@ -362,19 +399,20 @@ exports.uploadImages = async (req, res) => {
     });
 
     const imageUrls = await Promise.all(uploadPromises);
-    console.log("Images uploaded successfully:", imageUrls.length);
+    console.log("All images uploaded successfully:", imageUrls.length);
 
     res.json({
       success: true,
       data: {
         images: imageUrls,
       },
+      message: `Successfully uploaded ${imageUrls.length} image(s)`,
     });
   } catch (error) {
     console.error("Image upload error:", error);
     res.status(500).json({
       success: false,
-      message: error.message,
+      message: `Upload failed: ${error.message}`,
     });
   }
 };

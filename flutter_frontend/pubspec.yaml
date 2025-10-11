@@ -27,6 +27,7 @@ dependencies:
   connectivity_plus: ^5.0.1
   geocoding: ^2.1.1
   file_picker: ^10.3.3
+  http_parser: ^4.0.2
 
 dev_dependencies:
   flutter_test:

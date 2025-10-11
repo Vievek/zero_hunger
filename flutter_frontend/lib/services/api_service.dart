@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import '../models/user_model.dart';
 import 'token_manager.dart';
 
@@ -257,16 +258,50 @@ class ApiService {
         request.headers['Authorization'] = authHeader;
       }
 
-      // Add images
-      for (var imageFile in imageFiles) {
+      // Add images with better validation
+      for (int i = 0; i < imageFiles.length; i++) {
+        var imageFile = imageFiles[i];
+
+        // Verify file exists before uploading
+        if (!await imageFile.exists()) {
+          throw Exception('Image file ${i + 1} does not exist');
+        }
+
+        // Get file size
+        final fileSize = await imageFile.length();
+        if (fileSize > 10 * 1024 * 1024) {
+          // 10MB limit
+          throw Exception('Image file ${i + 1} is too large (max 10MB)');
+        }
+
+        // Determine content type based on file extension
+        String? contentType;
+        final fileName = imageFile.path.toLowerCase();
+        if (fileName.endsWith('.jpg') || fileName.endsWith('.jpeg')) {
+          contentType = 'image/jpeg';
+        } else if (fileName.endsWith('.png')) {
+          contentType = 'image/png';
+        } else if (fileName.endsWith('.gif')) {
+          contentType = 'image/gif';
+        } else if (fileName.endsWith('.webp')) {
+          contentType = 'image/webp';
+        } else if (fileName.endsWith('.bmp')) {
+          contentType = 'image/bmp';
+        }
+
         request.files.add(await http.MultipartFile.fromPath(
           'images',
           imageFile.path,
+          contentType:
+              contentType != null ? MediaType.parse(contentType) : null,
         ));
       }
 
+      debugPrint('🌐 Uploading ${imageFiles.length} images...');
       final streamedResponse = await request.send();
       final response = await http.Response.fromStream(streamedResponse);
+
+      debugPrint('🌐 Upload response: ${response.statusCode}');
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return json.decode(response.body);
@@ -275,7 +310,7 @@ class ApiService {
         throw Exception(errorData['message'] ?? 'Image upload failed');
       }
     } catch (error) {
-      debugPrint('Image upload error: $error');
+      debugPrint('❌ Image upload error: $error');
       rethrow;
     }
   }

@@ -13,7 +13,21 @@ const upload = multer({
     files: 5, // Maximum 5 files
   },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith("image/")) {
+    // Accept common image formats
+    const allowedMimes = [
+      "image/jpeg",
+      "image/jpg",
+      "image/png",
+      "image/gif",
+      "image/bmp",
+      "image/webp",
+      "image/svg+xml",
+    ];
+
+    if (
+      file.mimetype.startsWith("image/") ||
+      allowedMimes.includes(file.mimetype)
+    ) {
       cb(null, true);
     } else {
       cb(new Error("Only image files are allowed!"), false);
