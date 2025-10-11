@@ -52,6 +52,37 @@ class LogisticsTask {
     );
   }
 
+  // Add copyWith method
+  LogisticsTask copyWith({
+    String? id,
+    String? donationId,
+    String? volunteerId,
+    String? status,
+    Map<String, dynamic>? pickupLocation,
+    Map<String, dynamic>? dropoffLocation,
+    Map<String, dynamic>? optimizedRoute,
+    DateTime? scheduledPickupTime,
+    DateTime? actualPickupTime,
+    DateTime? actualDeliveryTime,
+    int? routeSequence,
+    DateTime? createdAt,
+  }) {
+    return LogisticsTask(
+      id: id ?? this.id,
+      donationId: donationId ?? this.donationId,
+      volunteerId: volunteerId ?? this.volunteerId,
+      status: status ?? this.status,
+      pickupLocation: pickupLocation ?? this.pickupLocation,
+      dropoffLocation: dropoffLocation ?? this.dropoffLocation,
+      optimizedRoute: optimizedRoute ?? this.optimizedRoute,
+      scheduledPickupTime: scheduledPickupTime ?? this.scheduledPickupTime,
+      actualPickupTime: actualPickupTime ?? this.actualPickupTime,
+      actualDeliveryTime: actualDeliveryTime ?? this.actualDeliveryTime,
+      routeSequence: routeSequence ?? this.routeSequence,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
   // Helper methods
   bool get isPending => status == 'pending';
   bool get isAssigned => status == 'assigned';

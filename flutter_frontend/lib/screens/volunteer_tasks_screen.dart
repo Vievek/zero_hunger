@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/logistics_provider.dart';
+import '../models/logistics_model.dart';
 
 class VolunteerTasksScreen extends StatefulWidget {
   const VolunteerTasksScreen({super.key});
@@ -44,7 +45,9 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
   }
 
   Widget _buildTasksContent(LogisticsProvider provider) {
-    if (provider.tasks.isEmpty) {
+    final tasks = provider.tasks;
+
+    if (tasks.isEmpty) {
       return _buildEmptyState();
     }
 
@@ -61,9 +64,9 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
           // Tasks List
           Expanded(
             child: ListView.builder(
-              itemCount: provider.tasks.length,
+              itemCount: tasks.length,
               itemBuilder: (context, index) {
-                final task = provider.tasks[index];
+                final task = tasks[index];
                 return _buildTaskCard(task, provider);
               },
             ),
@@ -155,7 +158,7 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
     );
   }
 
-  Widget _buildTaskCard(dynamic task, LogisticsProvider provider) {
+  Widget _buildTaskCard(LogisticsTask task, LogisticsProvider provider) {
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Padding(
@@ -187,13 +190,7 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
             if (task.scheduledPickupTime != null)
               _buildTaskInfo(
                 '⏰ Scheduled',
-                _formatDateTime(task.scheduledPickupTime),
-              ),
-            if (task.urgency != null && task.urgency != 'normal')
-              _buildTaskInfo(
-                '🚨 Priority',
-                '${task.urgency.toUpperCase()} PRIORITY',
-                isUrgent: true,
+                _formatDateTime(task.scheduledPickupTime!),
               ),
             const SizedBox(height: 12),
             _buildActionButtons(task, provider),
@@ -235,33 +232,33 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
     );
   }
 
-  Widget _buildActionButtons(dynamic task, LogisticsProvider provider) {
+  Widget _buildActionButtons(LogisticsTask task, LogisticsProvider provider) {
     return Row(
       children: [
         // Status progression buttons
         if (task.status == 'assigned') ...[
           ElevatedButton(
-            onPressed: provider.isUpdating(task.id)
+            onPressed: provider.isUpdating(task.id!)
                 ? null
-                : () => _updateTaskStatus(task.id, 'picked_up', provider),
+                : () => _updateTaskStatus(task.id!, 'picked_up', provider),
             child: const Text('Mark as Picked Up'),
           ),
           const SizedBox(width: 8),
         ],
         if (task.status == 'picked_up') ...[
           ElevatedButton(
-            onPressed: provider.isUpdating(task.id)
+            onPressed: provider.isUpdating(task.id!)
                 ? null
-                : () => _updateTaskStatus(task.id, 'in_transit', provider),
+                : () => _updateTaskStatus(task.id!, 'in_transit', provider),
             child: const Text('Start Delivery'),
           ),
           const SizedBox(width: 8),
         ],
         if (task.status == 'in_transit') ...[
           ElevatedButton(
-            onPressed: provider.isUpdating(task.id)
+            onPressed: provider.isUpdating(task.id!)
                 ? null
-                : () => _updateTaskStatus(task.id, 'delivered', provider),
+                : () => _updateTaskStatus(task.id!, 'delivered', provider),
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Mark as Delivered'),
           ),
@@ -332,13 +329,8 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
     );
   }
 
-  String _formatDateTime(String dateTimeString) {
-    try {
-      final dateTime = DateTime.parse(dateTimeString);
-      return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return 'Invalid date';
-    }
+  String _formatDateTime(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
   }
 
   Future<void> _updateTaskStatus(
@@ -374,13 +366,13 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
     }
   }
 
-  void _showDirections(dynamic task, LogisticsProvider provider) {
+  void _showDirections(LogisticsTask task, LogisticsProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delivery Route'),
         content: FutureBuilder(
-          future: provider.getOptimizedRoute(task.id),
+          future: provider.getOptimizedRoute(task.id!),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -431,13 +423,13 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
     );
   }
 
-  void _showTaskDetails(dynamic task, LogisticsProvider provider) {
+  void _showTaskDetails(LogisticsTask task, LogisticsProvider provider) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Task Details'),
         content: FutureBuilder(
-          future: provider.getTaskDetails(task.id),
+          future: provider.getTaskDetails(task.id!),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator());
@@ -528,7 +520,7 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
     }
   }
 
-  void _openInMaps(dynamic task) {
+  void _openInMaps(LogisticsTask task) {
     // This would open the route in the device's maps app
     // Implementation depends on the maps integration you're using
     ScaffoldMessenger.of(context).showSnackBar(

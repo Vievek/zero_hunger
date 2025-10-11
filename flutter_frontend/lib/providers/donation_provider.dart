@@ -8,16 +8,22 @@ class DonationProvider with ChangeNotifier {
 
   List<Donation> _donations = [];
   List<Donation> _availableDonations = [];
+  List<Donation> _matchedDonations = [];
   bool _isLoading = false;
+  bool _isLoadingMore = false;
   String? _error;
   final Map<String, bool> _processingDonations = {};
   Map<String, dynamic> _donationStats = {};
+  Map<String, dynamic> _donationPagination = {};
 
   List<Donation> get donations => _donations;
   List<Donation> get availableDonations => _availableDonations;
+  List<Donation> get matchedDonations => _matchedDonations;
   bool get isLoading => _isLoading;
+  bool get isLoadingMore => _isLoadingMore;
   String? get error => _error;
   Map<String, dynamic> get donationStats => _donationStats;
+  Map<String, dynamic> get donationPagination => _donationPagination;
 
   Future<Map<String, dynamic>> analyzeFoodImages(List<File> imageFiles) async {
     try {
@@ -232,6 +238,197 @@ class DonationProvider with ChangeNotifier {
     }
   }
 
+  // NEW: Fetch recipient dashboard data
+  Future<void> fetchRecipientDashboard() async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      debugPrint("🔄 Fetching recipient dashboard data...");
+
+      final response = await _apiService.getRecipientDashboard();
+
+      // Update all the different donation lists
+      if (response['data']['availableDonations'] != null) {
+        _availableDonations = (response['data']['availableDonations'] as List)
+            .map((item) => Donation.fromJson(item))
+            .toList();
+      }
+
+      if (response['data']['matchedDonations'] != null) {
+        _matchedDonations = (response['data']['matchedDonations'] as List)
+            .map((item) => Donation.fromJson(item))
+            .toList();
+      }
+
+      if (response['data']['acceptedDonations'] != null) {
+        _donations = (response['data']['acceptedDonations'] as List)
+            .map((item) => Donation.fromJson(item))
+            .toList();
+      }
+
+      // Update stats
+      if (response['data']['stats'] != null) {
+        _donationStats = Map<String, dynamic>.from(response['data']['stats']);
+      }
+
+      debugPrint(
+          "✅ Dashboard loaded: ${_availableDonations.length} available, ${_matchedDonations.length} matched, ${_donations.length} accepted");
+
+      _isLoading = false;
+      notifyListeners();
+    } catch (error) {
+      _isLoading = false;
+      _error = error.toString();
+      debugPrint("❌ Error fetching recipient dashboard: $error");
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  // NEW: Fetch all available donations (including non-matched)
+  Future<void> fetchAllAvailableDonations({
+    int page = 1,
+    int limit = 10,
+    String? query,
+    List<String>? categories,
+    bool append = false,
+  }) async {
+    try {
+      if (!append) {
+        _isLoading = true;
+      } else {
+        _isLoadingMore = true;
+      }
+      _error = null;
+      notifyListeners();
+
+      debugPrint("🔄 Fetching all available donations...");
+
+      final response = await _apiService.getAllAvailableDonations(
+        page: page,
+        limit: limit,
+        query: query,
+        categories: categories,
+      );
+
+      final newDonations = (response['data']['donations'] as List)
+          .map((item) => Donation.fromJson(item))
+          .toList();
+
+      if (append) {
+        _availableDonations.addAll(newDonations);
+      } else {
+        _availableDonations = newDonations;
+      }
+
+      // Update pagination info
+      _donationPagination =
+          Map<String, dynamic>.from(response['data']['pagination'] ?? {});
+
+      if (!append) {
+        _isLoading = false;
+      } else {
+        _isLoadingMore = false;
+      }
+
+      debugPrint("✅ Loaded ${newDonations.length} donations (page $page)");
+      notifyListeners();
+    } catch (error) {
+      _isLoading = false;
+      _isLoadingMore = false;
+      _error = error.toString();
+      debugPrint("❌ Error fetching all available donations: $error");
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  // NEW: Fetch matched donations
+  Future<void> fetchMatchedDonations({String status = 'offered'}) async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      debugPrint("🔄 Fetching matched donations with status: $status");
+
+      final response = await _apiService.getMatchedDonations(status: status);
+
+      _matchedDonations = (response['data']['donations'] as List)
+          .map((item) => Donation.fromJson(item))
+          .toList();
+
+      _isLoading = false;
+      debugPrint("✅ Loaded ${_matchedDonations.length} $status donations");
+      notifyListeners();
+    } catch (error) {
+      _isLoading = false;
+      _error = error.toString();
+      debugPrint("❌ Error fetching matched donations: $error");
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  // NEW: Decline donation offer
+  Future<void> declineDonationOffer(String donationId, {String? reason}) async {
+    try {
+      _error = null;
+      notifyListeners();
+
+      // This would call a decline API endpoint
+      // For now, we'll simulate the behavior
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Remove from matched donations
+      final declinedIndex =
+          _matchedDonations.indexWhere((d) => d.id == donationId);
+      if (declinedIndex != -1) {
+        _matchedDonations.removeAt(declinedIndex);
+      }
+
+      notifyListeners();
+    } catch (error) {
+      _error = error.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  // NEW: Update recipient profile
+  Future<void> updateRecipientProfile(Map<String, dynamic> profileData) async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      await _apiService.updateRecipientProfile(profileData);
+
+      _isLoading = false;
+      notifyListeners();
+    } catch (error) {
+      _isLoading = false;
+      _error = error.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  // NEW: Get recipient statistics
+  Future<void> fetchRecipientStats() async {
+    try {
+      final response = await _apiService.getRecipientStats();
+      _donationStats = Map<String, dynamic>.from(response['data']);
+      notifyListeners();
+    } catch (error) {
+      if (kDebugMode) {
+        print('Failed to fetch recipient stats: $error');
+      }
+    }
+  }
+
   void _startPollingDonationStatus(String donationId) {
     // Implement polling logic for AI processing status
     // This would periodically check the donation status until AI processing is complete
@@ -298,6 +495,33 @@ class DonationProvider with ChangeNotifier {
       'pending': _donations
           .where((d) => ['pending', 'ai_processing'].contains(d.status))
           .length,
+    };
+  }
+
+  // Enhanced donation stats for recipient
+  Map<String, int> get recipientStatsSummary {
+    if (_donationStats.isNotEmpty) {
+      return {
+        'available':
+            _donationStats['activeOffers'] ?? _availableDonations.length,
+        'matched': _matchedDonations.length,
+        'accepted': _donationStats['totalAccepted'] ?? _donations.length,
+        'delivered': _donationStats['delivered'] ?? 0,
+        'totalMeals': _donationStats['totalMeals'] ?? 0,
+        'acceptanceRate': _donationStats['acceptanceRate'] ?? 0,
+      };
+    }
+
+    // Fallback to local calculation
+    return {
+      'available': _availableDonations.length,
+      'matched': _matchedDonations.length,
+      'accepted': _donations
+          .where((d) => d.status == 'matched' || d.status == 'scheduled')
+          .length,
+      'delivered': _donations.where((d) => d.status == 'delivered').length,
+      'totalMeals': 0,
+      'acceptanceRate': 0,
     };
   }
 

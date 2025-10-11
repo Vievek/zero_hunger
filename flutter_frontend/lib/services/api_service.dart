@@ -471,4 +471,73 @@ class ApiService {
     }
     return error.toString();
   }
+// ADD these methods to your existing ApiService class
+
+// NEW: Recipient dashboard
+  Future<dynamic> getRecipientDashboard() async {
+    return await _makeRequest('GET', '/recipient/dashboard');
+  }
+
+// NEW: Get all available donations for recipient
+  Future<dynamic> getAllAvailableDonations({
+    int page = 1,
+    int limit = 10,
+    String? query,
+    List<String>? categories,
+  }) async {
+    String endpoint = '/recipient/donations/available?page=$page&limit=$limit';
+
+    if (query != null && query.isNotEmpty) {
+      endpoint += '&search=${Uri.encodeComponent(query)}';
+    }
+
+    if (categories != null && categories.isNotEmpty) {
+      endpoint += '&categories=${categories.join(',')}';
+    }
+
+    return await _makeRequest('GET', endpoint);
+  }
+
+// NEW: Get matched donations
+  Future<dynamic> getMatchedDonations({String status = 'offered'}) async {
+    return await _makeRequest(
+        'GET', '/recipient/donations/matched?status=$status');
+  }
+
+// NEW: Update recipient profile
+  Future<dynamic> updateRecipientProfile(
+      Map<String, dynamic> profileData) async {
+    return await _makeRequest('PUT', '/recipient/profile', body: profileData);
+  }
+
+// NEW: Get recipient stats
+  Future<dynamic> getRecipientStats() async {
+    return await _makeRequest('GET', '/recipient/stats');
+  }
+
+// NEW: Accept donation offer
+  Future<dynamic> acceptDonationOffer(String donationId) async {
+    return await _makeRequest(
+        'POST', '/recipient/donations/$donationId/accept');
+  }
+
+// NEW: Decline donation offer
+  Future<dynamic> declineDonationOffer(String donationId,
+      {String? reason}) async {
+    return await _makeRequest(
+        'POST', '/recipient/donations/$donationId/decline',
+        body: {'reason': reason});
+  }
+  // NEW: Get available tasks near volunteer
+  Future<dynamic> getAvailableTasks() async {
+    return await _makeRequest('GET', '/logistics/tasks/available');
+  }
+
+// NEW: Accept a task manually
+  Future<dynamic> acceptTask(String taskId) async {
+    return await _makeRequest('POST', '/logistics/tasks/$taskId/accept');
+  }
+
+ 
+
 }

@@ -12,7 +12,7 @@ const donationRoutes = require("./routes/donations");
 const adminRoutes = require("./routes/admin");
 const foodsafeRoutes = require("./routes/foodsafe");
 const logisticsRoutes = require("./routes/logistics");
-
+const recipientRoutes = require("./routes/recipient");
 const app = express();
 
 // CORS configuration
@@ -84,6 +84,7 @@ app.use("/api/donations", donationRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/foodsafe", foodsafeRoutes);
 app.use("/api/logistics", logisticsRoutes);
+app.use("/api/recipient", recipientRoutes);
 
 // Root endpoint
 app.get("/", (req, res) => {

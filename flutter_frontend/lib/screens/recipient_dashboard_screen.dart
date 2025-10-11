@@ -2,7 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
-import '../widgets/dashboard_appbar.dart';
+import 'recipient_matched_donations_screen.dart';
+import 'recipient_all_donations_screen.dart';
 
 class RecipientDashboardScreen extends StatefulWidget {
   const RecipientDashboardScreen({super.key});
@@ -13,71 +14,100 @@ class RecipientDashboardScreen extends StatefulWidget {
 }
 
 class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
-  int _currentPage = 1;
-  final int _limit = 10;
-  String? _searchQuery;
-  List<String>? _selectedCategories;
-
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadDonations();
-      Provider.of<DonationProvider>(context, listen: false)
-          .fetchDonationStats();
+      _loadDashboardData();
     });
   }
 
-  Future<void> _loadDonations() async {
-    await Provider.of<DonationProvider>(context, listen: false)
-        .fetchAvailableDonations(
-      page: _currentPage,
-      limit: _limit,
-      query: _searchQuery,
-      categories: _selectedCategories,
-    );
+  Future<void> _loadDashboardData() async {
+    debugPrint("🔄 Loading recipient dashboard data...");
+    final donationProvider =
+        Provider.of<DonationProvider>(context, listen: false);
+
+    if (!mounted) return;
+
+    try {
+      await donationProvider.fetchRecipientDashboard();
+      await donationProvider.fetchDonationStats();
+    } catch (e) {
+      debugPrint("❌ Error loading dashboard data: $e");
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final donationProvider = Provider.of<DonationProvider>(context);
 
-    return Scaffold(
-      appBar: const DashboardAppBar(
-        title: 'Recipient Dashboard',
+    return DefaultTabController(
+      length: 3, // Three tabs
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('Recipient Dashboard'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(icon: Icon(Icons.dashboard), text: 'Overview'),
+              Tab(icon: Icon(Icons.list_alt), text: 'All Donations'),
+              Tab(icon: Icon(Icons.handshake), text: 'Matched'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            // Tab 1: Overview
+            _buildOverviewTab(donationProvider),
+
+            // Tab 2: All Donations
+            const RecipientAllDonationsScreen(),
+
+            // Tab 3: Matched Donations
+            const RecipientMatchedDonationsScreen(),
+          ],
+        ),
       ),
-      body: donationProvider.isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              children: [
-                // Welcome Header
-                _buildWelcomeHeader(),
-
-                // Search and Filter Section
-                _buildSearchSection(),
-
-                // Stats Overview
-                _buildStatsCard(donationProvider),
-
-                const SizedBox(height: 16),
-
-                // Donations List
-                Expanded(
-                  child: _buildDonationsList(
-                      donationProvider.availableDonations, donationProvider),
-                ),
-
-                // Pagination
-                _buildPagination(donationProvider),
-              ],
-            ),
     );
+  }
+
+  Widget _buildOverviewTab(DonationProvider provider) {
+    return provider.isLoading
+        ? const Center(child: CircularProgressIndicator())
+        : RefreshIndicator(
+            onRefresh: _loadDashboardData,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                children: [
+                  // Welcome Header
+                  _buildWelcomeHeader(),
+
+                  // Stats Overview
+                  _buildStatsCard(provider),
+
+                  const SizedBox(height: 16),
+
+                  // Quick Actions
+                  _buildQuickActions(),
+
+                  const SizedBox(height: 16),
+
+                  // Recent Available Donations
+                  _buildRecentDonations(provider),
+
+                  const SizedBox(height: 16),
+
+                  // Accepted Donations
+                  _buildAcceptedDonations(provider),
+                ],
+              ),
+            ),
+          );
   }
 
   Widget _buildWelcomeHeader() {
     return Container(
       width: double.infinity,
-      margin: EdgeInsets.only(top: MediaQuery.of(context).padding.top),
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.orange.withAlpha(25),
@@ -90,7 +120,7 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Available Donations 🍽️',
+            'Welcome Back! 🍽️',
             style: TextStyle(
               fontSize: 24,
               fontWeight: FontWeight.bold,
@@ -98,7 +128,7 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
           ),
           SizedBox(height: 8),
           Text(
-            'Accept donations matched for your organization',
+            'Manage your food donations and help those in need',
             style: TextStyle(
               fontSize: 16,
               color: Colors.grey,
@@ -109,99 +139,39 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
     );
   }
 
-  Widget _buildSearchSection() {
+  Widget _buildStatsCard(DonationProvider provider) {
+    final stats = provider.recipientStatsSummary;
+
     return Padding(
       padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
-          // Search Bar
-          TextField(
-            decoration: const InputDecoration(
-              hintText: 'Search donations...',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
-              contentPadding: EdgeInsets.symmetric(horizontal: 12),
-            ),
-            onChanged: (value) {
-              setState(() {
-                _searchQuery = value.isEmpty ? null : value;
-              });
-            },
-            onSubmitted: (_) => _loadDonations(),
-          ),
-
-          const SizedBox(height: 12),
-
-          // Category Filter Chips
-          _buildCategoryFilter(),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCategoryFilter() {
-    final categories = [
-      'prepared-meal',
-      'fruits',
-      'vegetables',
-      'baked-goods',
-      'dairy',
-      'meat',
-      'seafood',
-      'grains',
-      'beverages'
-    ];
-
-    return Wrap(
-      spacing: 8,
-      runSpacing: 4,
-      children: categories.map((category) {
-        final isSelected = _selectedCategories?.contains(category) == true;
-        return FilterChip(
-          label: Text(category.replaceAll('-', ' ')),
-          selected: isSelected,
-          onSelected: (selected) {
-            setState(() {
-              _selectedCategories ??= [];
-              if (selected) {
-                _selectedCategories!.add(category);
-              } else {
-                _selectedCategories!.remove(category);
-              }
-            });
-            _loadDonations();
-          },
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildStatsCard(DonationProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
       child: Card(
         elevation: 4,
         child: Padding(
           padding: const EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
+          child: Column(
             children: [
-              _buildStatItem(
-                  'Total', provider.availableDonations.length, Colors.blue),
-              _buildStatItem(
-                'High Match',
-                provider.availableDonations
-                    .where((d) => _getMaxMatchScore(d) > 0.8)
-                    .length,
-                Colors.green,
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildStatItem(
+                      'Available', stats['available'] ?? 0, Colors.blue),
+                  _buildStatItem(
+                      'Matched', stats['matched'] ?? 0, Colors.orange),
+                  _buildStatItem(
+                      'Accepted', stats['accepted'] ?? 0, Colors.green),
+                ],
               ),
-              _buildStatItem(
-                'Urgent',
-                provider.availableDonations
-                    .where(
-                        (d) => d.urgency == 'critical' || d.urgency == 'high')
-                    .length,
-                Colors.orange,
+              const SizedBox(height: 12),
+              const Divider(),
+              const SizedBox(height: 8),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceAround,
+                children: [
+                  _buildImpactItem('Total Impact',
+                      '${stats['totalMeals'] ?? 0} meals', Icons.people),
+                  _buildImpactItem('Success Rate',
+                      '${stats['acceptanceRate'] ?? 0}%', Icons.trending_up),
+                ],
               ),
             ],
           ),
@@ -242,447 +212,363 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
     );
   }
 
+  Widget _buildImpactItem(String label, String value, IconData icon) {
+    return Column(
+      children: [
+        Icon(icon, size: 24, color: Colors.blue),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 10, color: Colors.grey),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildQuickActions() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: Card(
+              child: InkWell(
+                onTap: () {
+                  // Navigate to all donations
+                  DefaultTabController.of(context).animateTo(1);
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Icon(Icons.search, color: Colors.blue),
+                      SizedBox(height: 8),
+                      Text(
+                        'Browse All',
+                        style: TextStyle(fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Card(
+              child: InkWell(
+                onTap: () {
+                  // Navigate to matched donations
+                  DefaultTabController.of(context).animateTo(2);
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Icon(Icons.handshake, color: Colors.orange),
+                      SizedBox(height: 8),
+                      Text(
+                        'My Matches',
+                        style: TextStyle(fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          Expanded(
+            child: Card(
+              child: InkWell(
+                onTap: () {
+                  // Refresh data
+                  _loadDashboardData();
+                },
+                child: const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Icon(Icons.refresh, color: Colors.green),
+                      SizedBox(height: 8),
+                      Text(
+                        'Refresh',
+                        style: TextStyle(fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRecentDonations(DonationProvider provider) {
+    final donations = provider.availableDonations.take(3).toList();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.new_releases, color: Colors.blue),
+                  SizedBox(width: 8),
+                  Text(
+                    'Recent Available Donations',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (donations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'No available donations at the moment',
+                    style: TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                ...donations.map(
+                    (donation) => _buildDonationListItem(donation, provider)),
+              const SizedBox(height: 8),
+              if (donations.isNotEmpty)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    onPressed: () {
+                      DefaultTabController.of(context).animateTo(1);
+                    },
+                    child: const Text('View All →'),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAcceptedDonations(DonationProvider provider) {
+    final donations = provider.donations
+        .where((d) => d.status == 'matched' || d.status == 'scheduled')
+        .take(3)
+        .toList();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Row(
+                children: [
+                  Icon(Icons.check_circle, color: Colors.green),
+                  SizedBox(width: 8),
+                  Text(
+                    'Recently Accepted',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              if (donations.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text(
+                    'No accepted donations yet',
+                    style: TextStyle(color: Colors.grey),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else
+                ...donations
+                    .map((donation) => _buildAcceptedDonationItem(donation)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDonationListItem(Donation donation, DonationProvider provider) {
+    return ListTile(
+      leading: donation.images.isNotEmpty
+          ? ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                donation.images.first,
+                width: 50,
+                height: 50,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[200],
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.fastfood, color: Colors.grey),
+                  );
+                },
+              ),
+            )
+          : Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.fastfood, color: Colors.grey),
+            ),
+      title: Text(
+        donation.displayDescription,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('Quantity: ${donation.quantityText}'),
+          if (donation.categories.isNotEmpty)
+            Text('Categories: ${donation.categories.join(', ')}'),
+        ],
+      ),
+      trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+      onTap: () => _showDonationDetails(donation, provider),
+    );
+  }
+
+  Widget _buildAcceptedDonationItem(Donation donation) {
+    return ListTile(
+      leading: const Icon(Icons.inventory_2, color: Colors.green),
+      title: Text(
+        donation.displayDescription,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+      subtitle: Text('Status: ${donation.statusText}'),
+      trailing: Chip(
+        label: Text(donation.statusText),
+        backgroundColor: _getStatusColor(donation.status),
+      ),
+    );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status) {
+      case 'matched':
+        return Colors.blue;
+      case 'scheduled':
+        return Colors.orange;
+      case 'picked_up':
+        return Colors.purple;
+      case 'delivered':
+        return Colors.green;
+      default:
+        return Colors.grey;
+    }
+  }
+
   IconData _getStatIcon(String label) {
     switch (label.toLowerCase()) {
-      case 'total':
+      case 'available':
         return Icons.list_alt;
-      case 'high match':
-        return Icons.star;
-      case 'urgent':
-        return Icons.warning;
+      case 'matched':
+        return Icons.handshake;
+      case 'accepted':
+        return Icons.check_circle;
       default:
         return Icons.help;
     }
   }
 
-  Widget _buildDonationsList(
-      List<Donation> donations, DonationProvider provider) {
-    if (donations.isEmpty) {
-      return _buildEmptyState(provider);
-    }
-
-    return RefreshIndicator(
-      onRefresh: _loadDonations,
-      child: ListView.builder(
-        itemCount: donations.length,
-        itemBuilder: (context, index) {
-          final donation = donations[index];
-          return _buildDonationCard(donation, provider);
-        },
-      ),
-    );
-  }
-
-  Widget _buildEmptyState(DonationProvider provider) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.fastfood, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          const Text(
-            'No donations available',
-            style: TextStyle(fontSize: 18, color: Colors.grey),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            _searchQuery != null || _selectedCategories != null
-                ? 'Try adjusting your search filters'
-                : 'New donations will appear here when matched with your organization',
-            style: const TextStyle(fontSize: 14, color: Colors.grey),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 20),
-          if (_searchQuery != null || _selectedCategories != null)
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _searchQuery = null;
-                  _selectedCategories = null;
-                });
-                _loadDonations();
-              },
-              child: const Text('Clear Filters'),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDonationCard(Donation donation, DonationProvider provider) {
-    final matchScore = _getMaxMatchScore(donation);
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Padding(
+  void _showDonationDetails(Donation donation, DonationProvider provider) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => Container(
         padding: const EdgeInsets.all(16),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                // Food Image
-                donation.images.isNotEmpty
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          donation.images.first,
-                          width: 60,
-                          height: 60,
-                          fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return Container(
-                              width: 60,
-                              height: 60,
-                              decoration: BoxDecoration(
-                                color: Colors.grey[200],
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                              child: const Icon(Icons.fastfood,
-                                  color: Colors.grey),
-                            );
-                          },
-                        ),
-                      )
-                    : Container(
-                        width: 60,
-                        height: 60,
-                        decoration: BoxDecoration(
-                          color: Colors.grey[200],
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(Icons.fastfood, color: Colors.grey),
-                      ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        donation.displayDescription,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'From: ${_getDonorName(donation)}',
-                        style: TextStyle(color: Colors.grey[600]),
-                      ),
-                    ],
-                  ),
+                const Text(
+                  'Donation Details',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                _buildMatchScoreChip(matchScore),
-                if (donation.urgency == 'critical' ||
-                    donation.urgency == 'high')
-                  _buildUrgencyBadge(donation.urgency!),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                const Icon(Icons.scale, size: 16, color: Colors.grey),
-                const SizedBox(width: 4),
-                Text('Quantity: ${donation.quantityText}'),
                 const Spacer(),
-                const Icon(Icons.category, size: 16, color: Colors.grey),
-                const SizedBox(width: 4),
-                if (donation.categories.isNotEmpty)
-                  Text(
-                    donation.categories.first,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.location_on, size: 16, color: Colors.grey),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    donation.pickupAddress,
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () => Navigator.pop(context),
                 ),
               ],
             ),
-            if (donation.handlingWindow != null) ...[
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  const Icon(Icons.access_time, size: 16, color: Colors.grey),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Use by: ${_formatTimeRemaining(donation.handlingWindow!)}',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: _getTimeRemainingColor(donation.handlingWindow!),
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ],
+            const SizedBox(height: 16),
+            Text(
+              donation.displayDescription,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
             const SizedBox(height: 12),
+            _buildDetailRow('Quantity', donation.quantityText),
+            _buildDetailRow('Type', donation.type),
+            if (donation.categories.isNotEmpty)
+              _buildDetailRow('Categories', donation.categories.join(', ')),
             if (donation.tags.isNotEmpty)
-              Wrap(
-                spacing: 8,
-                runSpacing: 4,
-                children: donation.tags
-                    .take(3)
-                    .map((tag) => Chip(
-                          label:
-                              Text(tag, style: const TextStyle(fontSize: 10)),
-                          backgroundColor: Colors.blue.withAlpha(25),
-                          visualDensity: VisualDensity.compact,
-                        ))
-                    .toList(),
+              _buildDetailRow('Tags', donation.tags.join(', ')),
+            if (donation.aiAnalysis != null) ...[
+              const SizedBox(height: 12),
+              const Text('AI Analysis:',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+              if (donation.aiAnalysis!['freshnessScore'] != null)
+                _buildDetailRow('Freshness',
+                    '${(donation.aiAnalysis!['freshnessScore'] * 100).toInt()}%'),
+              if (donation.aiAnalysis!['safetyWarnings'] != null &&
+                  donation.aiAnalysis!['safetyWarnings'].isNotEmpty)
+                _buildSafetyWarnings(donation.aiAnalysis!['safetyWarnings']),
+            ],
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _acceptDonation(donation.id!, provider);
+                },
+                child: const Text('Accept Donation'),
               ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: () => _showDonationDetails(donation),
-                    child: const Text('View Details'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: provider.isLoading
-                        ? null
-                        : () => _acceptDonation(donation.id!, provider),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                    ),
-                    child: provider.isLoading
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Text('Accept Donation'),
-                  ),
-                ),
-              ],
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildMatchScoreChip(double score) {
-    Color color;
-    String text;
-
-    if (score > 0.8) {
-      color = Colors.green;
-      text = 'High Match';
-    } else if (score > 0.6) {
-      color = Colors.orange;
-      text = 'Good Match';
-    } else {
-      color = Colors.blue;
-      text = 'Match';
-    }
-
-    return Chip(
-      label: Text(
-        text,
-        style: const TextStyle(fontSize: 10, color: Colors.white),
-      ),
-      backgroundColor: color,
-      visualDensity: VisualDensity.compact,
-    );
-  }
-
-  Widget _buildUrgencyBadge(String urgency) {
-    final color = urgency == 'critical' ? Colors.red : Colors.orange;
-
-    return Container(
-      margin: const EdgeInsets.only(left: 4),
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        urgency.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 8,
-          color: Colors.white,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  double _getMaxMatchScore(Donation donation) {
-    if (donation.matchedRecipients.isEmpty) return 0.0;
-    return donation.matchedRecipients
-        .map((match) => match.matchScore)
-        .reduce((a, b) => a > b ? a : b);
-  }
-
-  String _getDonorName(Donation donation) {
-    if (donation.donor != null && donation.donor!['name'] != null) {
-      return donation.donor!['name'];
-    }
-    return 'Donor';
-  }
-
-  String _formatTimeRemaining(Map<String, dynamic> handlingWindow) {
-    try {
-      final end = DateTime.parse(handlingWindow['end']);
-      final now = DateTime.now();
-      final difference = end.difference(now);
-
-      if (difference.inDays > 0) {
-        return '${difference.inDays} days';
-      } else if (difference.inHours > 0) {
-        return '${difference.inHours} hours';
-      } else {
-        return '${difference.inMinutes} minutes';
-      }
-    } catch (e) {
-      return 'Unknown';
-    }
-  }
-
-  Color _getTimeRemainingColor(Map<String, dynamic> handlingWindow) {
-    try {
-      final end = DateTime.parse(handlingWindow['end']);
-      final now = DateTime.now();
-      final difference = end.difference(now);
-
-      if (difference.inHours < 2) return Colors.red;
-      if (difference.inHours < 6) return Colors.orange;
-      return Colors.green;
-    } catch (e) {
-      return Colors.grey;
-    }
-  }
-
-  Widget _buildPagination(DonationProvider provider) {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          IconButton(
-            icon: const Icon(Icons.arrow_back),
-            onPressed: _currentPage > 1
-                ? () {
-                    setState(() {
-                      _currentPage--;
-                    });
-                    _loadDonations();
-                  }
-                : null,
-          ),
-          Text('Page $_currentPage'),
-          IconButton(
-            icon: const Icon(Icons.arrow_forward),
-            onPressed: provider.availableDonations.length == _limit
-                ? () {
-                    setState(() {
-                      _currentPage++;
-                    });
-                    _loadDonations();
-                  }
-                : null,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _acceptDonation(
-      String donationId, DonationProvider provider) async {
-    try {
-      await provider.acceptDonation(donationId);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Donation accepted successfully!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
-
-      // Refresh the list
-      _loadDonations();
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to accept donation: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  void _showDonationDetails(Donation donation) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Donation Details'),
-        content: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                donation.displayDescription,
-                style:
-                    const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-              ),
-              const SizedBox(height: 12),
-              _buildDetailRow('Donor', _getDonorName(donation)),
-              _buildDetailRow('Quantity', donation.quantityText),
-              _buildDetailRow('Categories', donation.categories.join(', ')),
-              if (donation.tags.isNotEmpty)
-                _buildDetailRow('Tags', donation.tags.join(', ')),
-              if (donation.aiAnalysis != null) ...[
-                const SizedBox(height: 8),
-                const Text('AI Analysis:',
-                    style: TextStyle(fontWeight: FontWeight.bold)),
-                if (donation.aiAnalysis!['safetyWarnings'] != null &&
-                    donation.aiAnalysis!['safetyWarnings'].isNotEmpty)
-                  _buildSafetyWarnings(donation.aiAnalysis!['safetyWarnings']),
-                if (donation.aiAnalysis!['suggestedHandling'] != null)
-                  _buildDetailRow(
-                      'Handling', donation.aiAnalysis!['suggestedHandling']),
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('CLOSE'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              _acceptDonation(donation.id!,
-                  Provider.of<DonationProvider>(context, listen: false));
-            },
-            child: const Text('ACCEPT DONATION'),
-          ),
-        ],
       ),
     );
   }
@@ -694,7 +580,7 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 80,
+            width: 100,
             child: Text('$label:',
                 style: const TextStyle(fontWeight: FontWeight.w500)),
           ),
@@ -708,7 +594,7 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 4),
+        const SizedBox(height: 8),
         ...warnings.map((warning) => Padding(
               padding: const EdgeInsets.symmetric(vertical: 2),
               child: Row(
@@ -719,8 +605,33 @@ class _RecipientDashboardScreenState extends State<RecipientDashboardScreen> {
                   Expanded(child: Text(warning.toString())),
                 ],
               ),
-            )),
+            ))
       ],
     );
+  }
+
+  Future<void> _acceptDonation(
+      String donationId, DonationProvider provider) async {
+    try {
+      await provider.acceptDonation(donationId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Donation accepted successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        _loadDashboardData(); // Refresh data
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to accept donation: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }

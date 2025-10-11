@@ -45,13 +45,7 @@ class _RoleBottomNavBarState extends State<RoleBottomNavBar> {
           BottomNavigationItem(
             label: 'Dashboard',
             icon: Icons.dashboard,
-            screen: const RecipientDashboardScreen(),
-          ),
-          BottomNavigationItem(
-            label: 'Available',
-            icon: Icons.fastfood,
-            screen: const Scaffold(
-                body: Center(child: Text('Available Donations'))),
+            screen: const RecipientDashboardScreen(), // This contains all tabs
           ),
           BottomNavigationItem(
             label: 'FoodSafe AI',

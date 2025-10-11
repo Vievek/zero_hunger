@@ -41,6 +41,7 @@ class MatchingService {
 
   async findBestMatches(donationId) {
     try {
+      console.log(`🔍 Starting matching process for donation: ${donationId}`);
       const donation = await Donation.findById(donationId).populate("donor");
       if (!donation) throw new Error("Donation not found");
 
@@ -51,8 +52,9 @@ class MatchingService {
       if (this.useAIMatching) {
         try {
           const donationText = `${
-            donation.description || donation.aiDescription
+            donation.description || donation.aiDescription || "food donation"
           } ${donation.categories.join(" ")} ${donation.tags.join(" ")}`;
+          console.log(`🤖 AI Matching: Processing donation text`);
           const donationEmbedding = await this.getEmbedding(donationText);
 
           aiMatches = await this.calculateAIMatches(
@@ -60,38 +62,56 @@ class MatchingService {
             donationEmbedding
           );
           console.log(
-            `AI matching found ${aiMatches.length} potential matches`
+            `🤖 AI matching found ${aiMatches.length} potential matches`
           );
         } catch (aiError) {
-          console.error("AI matching failed, using fallback:", aiError.message);
+          console.error(
+            "🤖 AI matching failed, using fallback:",
+            aiError.message
+          );
           usingFallback = true;
         }
       } else {
         usingFallback = true;
-        console.log("AI matching disabled, using fallback matching");
+        console.log("🤖 AI matching disabled, using fallback matching");
       }
 
       let finalMatches = [];
 
       // If AI failed or no good matches, use fallback
       if (usingFallback || aiMatches.length === 0) {
-        console.log("Using fallback matching service");
+        console.log("🔄 Using fallback matching service");
         finalMatches = await fallbackMatchingService.findMatches(donation);
       } else {
         finalMatches = aiMatches;
       }
 
-      // Return top 3 matches sorted by score
+      // Return top 5 matches sorted by score (increased from 3)
       const bestMatches = finalMatches
         .sort((a, b) => b.totalScore - a.totalScore)
-        .slice(0, 3);
+        .slice(0, 5);
 
       console.log(
-        `Final matching results: ${bestMatches.length} matches found for donation ${donationId}`
+        `✅ Final matching results: ${bestMatches.length} matches found for donation ${donationId}`
       );
+
+      // Prepare matches for database storage
+      const matchesForDB = bestMatches.map((match) => ({
+        recipient: match.recipient._id,
+        matchScore: match.totalScore,
+        status: "offered",
+        matchingMethod: match.matchingMethod,
+        matchReasons: this.generateMatchReasons(match),
+      }));
+
+      // Update donation with matches
+      await Donation.findByIdAndUpdate(donationId, {
+        $set: { matchedRecipients: matchesForDB },
+      });
+
       return bestMatches;
     } catch (error) {
-      console.error("Matching error:", error);
+      console.error("❌ Matching error:", error);
       // Always return some fallback matches
       const donation = await Donation.findById(donationId);
       return await fallbackMatchingService.findMatches(donation);
@@ -102,19 +122,31 @@ class MatchingService {
     const recipients = await User.find({
       role: "recipient",
       "recipientDetails.verificationStatus": "verified",
+      "recipientDetails.isActive": true,
     }).populate("recipientDetails");
 
     const matches = [];
+    console.log(`🔍 Checking ${recipients.length} verified recipients`);
 
     for (const recipient of recipients) {
       try {
-        // Check capacity first
+        // FIXED: Enhanced capacity calculation
         const currentLoad = await Donation.countDocuments({
           acceptedBy: recipient._id,
-          status: { $in: ["active", "matched", "scheduled"] },
+          status: { $in: ["active", "matched", "scheduled", "picked_up"] },
         });
 
-        if (currentLoad >= (recipient.recipientDetails.capacity || 50)) {
+        const capacity = recipient.recipientDetails?.capacity || 50;
+
+        console.log(
+          `📊 Recipient ${recipient._id} capacity: ${currentLoad}/${capacity}`
+        );
+
+        // Check if recipient has capacity
+        if (currentLoad >= capacity) {
+          console.log(
+            `⛔ Recipient ${recipient._id} at capacity: ${currentLoad}/${capacity}`
+          );
           continue;
         }
 
@@ -123,13 +155,20 @@ class MatchingService {
           recipient.recipientDetails.organizationName
         } ${(recipient.recipientDetails.dietaryRestrictions || []).join(" ")} ${
           recipient.recipientDetails.organizationType || ""
-        }`;
-        const recipientEmbedding = await this.getEmbedding(recipientText);
+        } ${(recipient.recipientDetails.preferredFoodTypes || []).join(" ")}`;
 
-        const semanticScore = this.cosineSimilarity(
-          donationEmbedding,
-          recipientEmbedding
-        );
+        let semanticScore = 0.5; // Default score
+        try {
+          const recipientEmbedding = await this.getEmbedding(recipientText);
+          semanticScore = this.cosineSimilarity(
+            donationEmbedding,
+            recipientEmbedding
+          );
+        } catch (embeddingError) {
+          console.log(
+            `⚠️ Embedding failed for recipient ${recipient._id}, using default score`
+          );
+        }
 
         // Calculate other scores
         const proximityScore = await this.calculateProximityScore(
@@ -142,33 +181,54 @@ class MatchingService {
         );
         const capacityScore = this.calculateCapacityScore(
           currentLoad,
-          recipient.recipientDetails.capacity
+          capacity
+        );
+        const preferenceScore = this.calculatePreferenceScore(
+          donation,
+          recipient
         );
 
         // Enhanced combined score with weights
         const totalScore =
-          semanticScore * 0.35 +
+          semanticScore * 0.3 +
           proximityScore * 0.25 +
-          dietaryScore * 0.25 +
-          capacityScore * 0.15;
+          dietaryScore * 0.2 +
+          capacityScore * 0.15 +
+          preferenceScore * 0.1;
+
+        console.log(
+          `📊 Recipient ${
+            recipient._id
+          } scores: semantic=${semanticScore.toFixed(
+            2
+          )}, proximity=${proximityScore.toFixed(
+            2
+          )}, dietary=${dietaryScore.toFixed(
+            2
+          )}, capacity=${capacityScore.toFixed(
+            2
+          )}, preference=${preferenceScore.toFixed(
+            2
+          )}, total=${totalScore.toFixed(2)}`
+        );
 
         if (totalScore > 0.3) {
-          // Minimum threshold
           matches.push({
             recipient: recipient,
             semanticScore,
             proximityScore,
             dietaryScore,
             capacityScore,
+            preferenceScore,
             totalScore,
             currentLoad,
-            capacity: recipient.recipientDetails.capacity,
+            capacity,
             matchingMethod: "ai",
           });
         }
       } catch (recipientError) {
         console.error(
-          `Error processing recipient ${recipient._id}:`,
+          `❌ Error processing recipient ${recipient._id}:`,
           recipientError
         );
         continue;
@@ -176,6 +236,40 @@ class MatchingService {
     }
 
     return matches;
+  }
+
+  // NEW: Calculate preference score based on preferred food types
+  calculatePreferenceScore(donation, recipient) {
+    const preferredFoodTypes =
+      recipient.recipientDetails?.preferredFoodTypes || [];
+    const donationCategories = donation.categories || [];
+
+    if (preferredFoodTypes.length === 0) return 0.5; // Neutral if no preferences
+
+    let matchCount = 0;
+    donationCategories.forEach((category) => {
+      if (preferredFoodTypes.includes(category)) {
+        matchCount++;
+      }
+    });
+
+    return matchCount / Math.max(donationCategories.length, 1);
+  }
+
+  // FIXED: Enhanced capacity score calculation
+  calculateCapacityScore(currentLoad, capacity) {
+    if (!capacity || capacity === 0) return 0.5;
+
+    const utilization = currentLoad / capacity;
+
+    // More granular capacity scoring
+    if (utilization >= 1.0) return 0.0; // No capacity
+    if (utilization >= 0.9) return 0.1; // Almost full
+    if (utilization >= 0.8) return 0.3; // Very limited
+    if (utilization >= 0.6) return 0.5; // Limited
+    if (utilization >= 0.4) return 0.7; // Moderate
+    if (utilization >= 0.2) return 0.9; // Good capacity
+    return 1.0; // Plenty of capacity
   }
 
   async calculateProximityScore(donationLocation, recipient) {
@@ -194,7 +288,6 @@ class MatchingService {
       );
 
       // Convert to proximity score (closer = higher score)
-      // Assuming coordinates are in degrees, this is a simplified approach
       const maxDistance = 0.5; // ~55km in degrees
       return Math.max(0, 1 - distance / maxDistance);
     } catch (error) {
@@ -229,28 +322,54 @@ class MatchingService {
       // Check for conflicts in tags and categories
       const hasConflict = conflicts.some(
         (conflict) =>
-          donationTags.includes(conflict) ||
-          donationCategories.includes(conflict)
+          donationTags.some((tag) =>
+            tag.toLowerCase().includes(conflict.toLowerCase())
+          ) ||
+          donationCategories.some((cat) =>
+            cat.toLowerCase().includes(conflict.toLowerCase())
+          )
       );
 
       if (hasConflict) {
         compatibility *= 0.1; // Severe penalty for dietary conflicts
+        console.log(
+          `⚠️ Dietary conflict: ${restriction} for recipient ${recipient._id}`
+        );
       }
     }
 
     return compatibility;
   }
 
-  calculateCapacityScore(currentLoad, capacity) {
-    if (!capacity || capacity === 0) return 0.5;
+  // NEW: Generate human-readable match reasons
+  generateMatchReasons(match) {
+    const reasons = [];
 
-    const utilization = currentLoad / capacity;
+    if (match.semanticScore > 0.7) {
+      reasons.push("High semantic match");
+    }
 
-    // Prefer recipients with lower utilization (more capacity)
-    if (utilization >= 1.0) return 0.0; // No capacity
-    if (utilization >= 0.8) return 0.2; // Very limited capacity
-    if (utilization >= 0.5) return 0.5; // Moderate capacity
-    return 1.0; // Plenty of capacity
+    if (match.proximityScore > 0.8) {
+      reasons.push("Close proximity");
+    }
+
+    if (match.dietaryScore > 0.9) {
+      reasons.push("Excellent dietary compatibility");
+    }
+
+    if (match.capacityScore > 0.8) {
+      reasons.push("Good capacity availability");
+    }
+
+    if (match.preferenceScore > 0.7) {
+      reasons.push("Matches preferred food types");
+    }
+
+    if (reasons.length === 0) {
+      reasons.push("Good overall match");
+    }
+
+    return reasons;
   }
 }
 

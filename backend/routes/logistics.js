@@ -6,6 +6,20 @@ const { auth, requireRole } = require("../middleware/auth");
 // Apply authentication to all logistics routes
 router.use(auth);
 
+// NEW: Get available tasks near volunteer (within 5km)
+router.get(
+  "/tasks/available",
+  requireRole(["volunteer"]),
+  logisticsController.getAvailableTasks
+);
+
+// NEW: Accept a task manually
+router.post(
+  "/tasks/:taskId/accept",
+  requireRole(["volunteer"]),
+  logisticsController.acceptTask
+);
+
 // Volunteer task management
 router.get(
   "/my-tasks",
@@ -32,7 +46,7 @@ router.get(
   logisticsController.getVolunteerStats
 );
 
-// New enhanced routes
+// Location update
 router.put(
   "/location/update",
   requireRole(["volunteer"]),

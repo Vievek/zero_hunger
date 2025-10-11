@@ -3,19 +3,68 @@ import '../models/logistics_model.dart';
 import '../services/api_service.dart';
 
 class LogisticsProvider with ChangeNotifier {
-  final ApiService _apiService = ApiService(); // ✅ Use singleton instance
+  final ApiService _apiService = ApiService();
 
   List<LogisticsTask> _tasks = [];
+  List<LogisticsTask> _availableTasks = [];
   bool _isLoading = false;
   String? _error;
   Map<String, dynamic> _volunteerStats = {};
   final Map<String, bool> _updatingTasks = {};
 
   List<LogisticsTask> get tasks => _tasks;
+  List<LogisticsTask> get availableTasks => _availableTasks;
   bool get isLoading => _isLoading;
   String? get error => _error;
   Map<String, dynamic> get volunteerStats => _volunteerStats;
   bool isUpdating(String taskId) => _updatingTasks[taskId] == true;
+
+  // NEW: Fetch available tasks near volunteer
+  Future<void> fetchAvailableTasks() async {
+    try {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+
+      final response = await _apiService.getAvailableTasks();
+      _availableTasks = (response['data']['tasks'] as List)
+          .map((item) => LogisticsTask.fromJson(item))
+          .toList();
+
+      _isLoading = false;
+      notifyListeners();
+    } catch (error) {
+      _isLoading = false;
+      _error = error.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  // NEW: Accept a task manually
+  Future<void> acceptTask(String taskId) async {
+    try {
+      _error = null;
+      notifyListeners();
+
+      await _apiService.acceptTask(taskId);
+
+      // Move from available to my tasks
+      final acceptedTaskIndex =
+          _availableTasks.indexWhere((t) => t.id == taskId);
+      if (acceptedTaskIndex != -1) {
+        final acceptedTask = _availableTasks[acceptedTaskIndex];
+        _availableTasks.removeAt(acceptedTaskIndex);
+        _tasks.insert(0, acceptedTask.copyWith(status: 'assigned'));
+      }
+
+      notifyListeners();
+    } catch (error) {
+      _error = error.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
 
   Future<void> fetchMyTasks() async {
     try {
@@ -102,7 +151,6 @@ class LogisticsProvider with ChangeNotifier {
       if (kDebugMode) {
         print('Failed to update location: $error');
       }
-      // Don't throw error for location updates to avoid breaking main functionality
     }
   }
 
@@ -131,13 +179,7 @@ class LogisticsProvider with ChangeNotifier {
       String taskId, List<Map<String, dynamic>> checklist) async {
     try {
       await _apiService.updateSafetyChecklist(taskId, checklist);
-
-      // Update local task if it exists
-      final taskIndex = _tasks.indexWhere((task) => task.id == taskId);
-      if (taskIndex != -1) {
-        // Note: This would require adding safetyChecklist to LogisticsTask model
-        notifyListeners();
-      }
+      notifyListeners();
     } catch (error) {
       rethrow;
     }
@@ -209,14 +251,6 @@ class LogisticsProvider with ChangeNotifier {
     } catch (e) {
       return null;
     }
-  }
-
-  List<LogisticsTask> getUrgentTasks() {
-    return _tasks.where((task) {
-      // This would need to be implemented with actual task details
-      // For now, return all tasks as a placeholder
-      return true;
-    }).toList();
   }
 
   void clearError() {

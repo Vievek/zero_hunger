@@ -18,6 +18,7 @@ class Donation {
   final Map<String, dynamic>? aiAnalysis;
   final List<MatchedRecipient> matchedRecipients;
   final String? acceptedBy;
+  final Map<String, dynamic>? acceptedByUser;
   final String? assignedVolunteer;
   final String? urgency;
   final DateTime createdAt;
@@ -42,6 +43,7 @@ class Donation {
     this.aiAnalysis,
     this.matchedRecipients = const [],
     this.acceptedBy,
+    this.acceptedByUser,
     this.assignedVolunteer,
     this.urgency,
     required this.createdAt,
@@ -74,7 +76,10 @@ class Donation {
           : null,
       matchedRecipients:
           _parseMatchedRecipients(json['matchedRecipients'] ?? []),
-      acceptedBy: json['acceptedBy'],
+      acceptedBy: json['acceptedBy'] is String ? json['acceptedBy'] : null,
+      acceptedByUser: json['acceptedBy'] is Map
+          ? Map<String, dynamic>.from(json['acceptedBy'])
+          : null,
       assignedVolunteer: json['assignedVolunteer'],
       urgency: json['urgency'],
       createdAt:
@@ -105,7 +110,10 @@ class Donation {
         return MatchedRecipient.fromJson(Map<String, dynamic>.from(item));
       }
       return MatchedRecipient(
-          recipientId: item.toString(), matchScore: 0.0, status: 'offered');
+        recipientId: item.toString(),
+        matchScore: 0.0,
+        status: 'offered',
+      );
     }).toList();
   }
 
@@ -151,6 +159,7 @@ class Donation {
     Map<String, dynamic>? aiAnalysis,
     List<MatchedRecipient>? matchedRecipients,
     String? acceptedBy,
+    Map<String, dynamic>? acceptedByUser,
     String? assignedVolunteer,
     String? urgency,
     DateTime? createdAt,
@@ -175,6 +184,7 @@ class Donation {
       aiAnalysis: aiAnalysis ?? this.aiAnalysis,
       matchedRecipients: matchedRecipients ?? this.matchedRecipients,
       acceptedBy: acceptedBy ?? this.acceptedBy,
+      acceptedByUser: acceptedByUser ?? this.acceptedByUser,
       assignedVolunteer: assignedVolunteer ?? this.assignedVolunteer,
       urgency: urgency ?? this.urgency,
       createdAt: createdAt ?? this.createdAt,
@@ -261,6 +271,17 @@ class Donation {
       return false;
     }
   }
+
+  // Get match for current recipient
+  MatchedRecipient? getMatchForRecipient(String recipientId) {
+    try {
+      return matchedRecipients.firstWhere(
+        (match) => match.recipientId == recipientId,
+      );
+    } catch (e) {
+      return null;
+    }
+  }
 }
 
 class MatchedRecipient {
@@ -269,6 +290,9 @@ class MatchedRecipient {
   final double matchScore;
   final String status;
   final DateTime? respondedAt;
+  final String? declineReason;
+  final String? matchingMethod;
+  final List<String>? matchReasons;
 
   MatchedRecipient({
     required this.recipientId,
@@ -276,6 +300,9 @@ class MatchedRecipient {
     required this.matchScore,
     required this.status,
     this.respondedAt,
+    this.declineReason,
+    this.matchingMethod,
+    this.matchReasons,
   });
 
   factory MatchedRecipient.fromJson(Map<String, dynamic> json) {
@@ -286,6 +313,11 @@ class MatchedRecipient {
       status: json['status'] ?? 'offered',
       respondedAt: json['respondedAt'] != null
           ? DateTime.parse(json['respondedAt'])
+          : null,
+      declineReason: json['declineReason'],
+      matchingMethod: json['matchingMethod'],
+      matchReasons: json['matchReasons'] != null
+          ? List<String>.from(json['matchReasons'])
           : null,
     );
   }
@@ -305,17 +337,33 @@ class MatchedRecipient {
     }
     return null;
   }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'recipient': recipientId,
+      'matchScore': matchScore,
+      'status': status,
+      'respondedAt': respondedAt?.toIso8601String(),
+      'declineReason': declineReason,
+      'matchingMethod': matchingMethod,
+      'matchReasons': matchReasons,
+    };
+  }
 }
 
 class Donor {
   final String id;
   final String name;
   final String email;
+  final Map<String, dynamic>? contactInfo;
+  final Map<String, dynamic>? donorDetails;
 
   Donor({
     required this.id,
     required this.name,
     required this.email,
+    this.contactInfo,
+    this.donorDetails,
   });
 
   factory Donor.fromJson(Map<String, dynamic> json) {
@@ -323,6 +371,12 @@ class Donor {
       id: json['_id'] ?? json['id'] ?? '',
       name: json['name'] ?? '',
       email: json['email'] ?? '',
+      contactInfo: json['contactInfo'] != null
+          ? Map<String, dynamic>.from(json['contactInfo'])
+          : null,
+      donorDetails: json['donorDetails'] != null
+          ? Map<String, dynamic>.from(json['donorDetails'])
+          : null,
     );
   }
 }

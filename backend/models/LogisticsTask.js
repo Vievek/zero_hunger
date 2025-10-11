@@ -101,6 +101,10 @@ const taskSchema = new mongoose.Schema({
     },
   ],
 
+  // Cancellation fields
+  cancellationNotes: String,
+  cancelledAt: Date,
+
   createdAt: { type: Date, default: Date.now },
   updatedAt: { type: Date, default: Date.now },
 });
@@ -166,9 +170,18 @@ taskSchema.statics.findUrgentTasks = function () {
 
 // Instance method to check if task is overdue
 taskSchema.methods.isOverdue = function () {
-  if (this.estimatedDeliveryTime && this.status !== "delivered") {
-    return new Date() > this.estimatedDeliveryTime;
+  if (this.status === "delivered" || this.status === "cancelled") {
+    return false;
   }
+
+  if (this.estimatedDeliveryTime) {
+    const now = new Date();
+    const overdueTime = now - this.estimatedDeliveryTime;
+
+    // Consider 15-minute grace period
+    return overdueTime > 15 * 60 * 1000;
+  }
+
   return false;
 };
 
@@ -176,13 +189,97 @@ taskSchema.methods.isOverdue = function () {
 taskSchema.methods.getProgress = function () {
   const statusProgress = {
     pending: 0,
-    assigned: 25,
+    assigned: 20,
     picked_up: 50,
-    in_transit: 75,
+    in_transit: 80,
     delivered: 100,
     cancelled: 0,
   };
-  return statusProgress[this.status] || 0;
+
+  let progress = statusProgress[this.status] || 0;
+
+  // Add time-based progress for in-transit tasks
+  if (this.status === "in_transit" && this.estimatedDeliveryTime) {
+    const now = new Date();
+    const totalTime = this.estimatedDeliveryTime - this.actualPickupTime;
+    const elapsedTime = now - this.actualPickupTime;
+
+    if (totalTime > 0 && elapsedTime > 0) {
+      const timeProgress = (elapsedTime / totalTime) * 30; // Max 30% from time
+      progress = Math.min(80 + timeProgress, 95); // Cap at 95% until delivered
+    }
+  }
+
+  return Math.round(progress);
+};
+
+// NEW: Calculate task size based on donation
+taskSchema.methods.getTaskSize = async function () {
+  try {
+    await this.populate("donation");
+    const donation = this.donation;
+
+    if (!donation || !donation.quantity) return "medium";
+
+    const quantity = donation.quantity.amount || 0;
+
+    if (quantity <= 5) return "small";
+    if (quantity <= 20) return "medium";
+    if (quantity <= 50) return "large";
+    return "xlarge";
+  } catch (error) {
+    return "medium";
+  }
+};
+
+// NEW: Check if volunteer can handle this task
+taskSchema.methods.canVolunteerHandle = async function (volunteerId) {
+  try {
+    const User = mongoose.model("User");
+    const volunteer = await User.findById(volunteerId);
+
+    if (!volunteer || volunteer.role !== "volunteer") {
+      return false;
+    }
+
+    const taskSize = await this.getTaskSize();
+    return await volunteer.canAcceptTask(taskSize);
+  } catch (error) {
+    console.error("Volunteer capability check error:", error);
+    return false;
+  }
+};
+
+// NEW: Update ETA based on current conditions
+taskSchema.methods.updateETA = async function () {
+  if (this.status !== "in_transit" || !this.actualPickupTime) {
+    return;
+  }
+
+  try {
+    const routeOptimizationService = require("../services/routeOptimizationService");
+
+    const currentRoute = await routeOptimizationService.getRealTimeRoute(
+      this.pickupLocation,
+      this.dropoffLocation
+    );
+
+    if (currentRoute && currentRoute.estimatedDuration) {
+      this.estimatedDeliveryTime = new Date(
+        this.actualPickupTime.getTime() + currentRoute.estimatedDuration * 1000
+      );
+
+      if (this.optimizedRoute) {
+        this.optimizedRoute.estimatedDuration = currentRoute.estimatedDuration;
+        this.optimizedRoute.trafficConditions = currentRoute.trafficConditions;
+      }
+
+      await this.save();
+      console.log(`🔄 Updated ETA for task ${this._id}`);
+    }
+  } catch (error) {
+    console.error("ETA update error:", error);
+  }
 };
 
 module.exports = mongoose.model("LogisticsTask", taskSchema);

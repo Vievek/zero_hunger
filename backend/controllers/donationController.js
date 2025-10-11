@@ -26,83 +26,202 @@ function calculateHandlingWindow(freshnessScore, urgency) {
 // Helper function to initiate matching
 async function initiateMatching(donationId) {
   try {
-    const matches = await matchingService.findBestMatches(donationId);
+    console.log(`🔄 Starting matching process for donation: ${donationId}`);
+
     const donation = await Donation.findById(donationId);
-
-    if (matches && matches.length > 0) {
-      donation.matchedRecipients = matches.map((match) => ({
-        recipient: match.recipient._id,
-        matchScore: match.totalScore,
-        status: "offered",
-      }));
-
-      await donation.save();
-
-      // Send notifications to matched recipients
-      for (const match of matches) {
-        await notificationService.sendDonationOffer(
-          match.recipient._id,
-          donationId,
-          match.totalScore
-        );
-      }
-    } else {
-      console.log("No suitable matches found for donation:", donationId);
+    if (!donation) {
+      console.error(`❌ Donation not found: ${donationId}`);
+      return;
     }
+
+    // Update donation status to indicate matching started
+    donation.matchingStartedAt = new Date();
+    await donation.save();
+
+    // Use the instance method to find and store matches
+    await donation.findAndStoreMatches();
+
+    console.log(`✅ Matching process completed for donation: ${donationId}`);
   } catch (error) {
-    console.error("Matching process error:", error);
+    console.error(
+      `💥 Matching process error for donation ${donationId}:`,
+      error
+    );
     // Don't fail the donation creation if matching fails
   }
 }
 
-// Helper function to assign volunteer to task
+
+// ENHANCED volunteer assignment with proper error handling
 async function assignVolunteerToTask(taskId) {
   try {
+    console.log(`🔍 Assigning volunteer to task: ${taskId}`);
+    
     const task = await LogisticsTask.findById(taskId).populate("donation");
-    const availableVolunteers = await User.find({
-      role: "volunteer",
-      "volunteerDetails.isAvailable": true,
-    });
-
-    if (availableVolunteers.length === 0) {
-      console.log("No available volunteers");
-      // Schedule retry or notify admin
+    if (!task) {
+      console.error(`❌ Task not found: ${taskId}`);
       return;
     }
 
-    // Use enhanced GA for volunteer assignment with urgency consideration
-    const assignedVolunteer =
-      await routeOptimizationService.findOptimalVolunteer(
-        task.pickupLocation,
-        availableVolunteers,
-        task.urgency
-      );
+    // Get ACTIVE volunteers with proper filtering
+    const availableVolunteers = await User.find({
+      role: "volunteer",
+      "volunteerDetails.isAvailable": true,
+      status: "active",
+    }).select("name email volunteerDetails contactInfo");
+
+    console.log(`👥 Found ${availableVolunteers.length} available volunteers`);
+
+    if (availableVolunteers.length === 0) {
+      console.log("⛔ No available volunteers found");
+      
+      // Schedule retry in 5 minutes
+      setTimeout(() => {
+        console.log(`🔄 Retrying volunteer assignment for task: ${taskId}`);
+        assignVolunteerToTask(taskId);
+      }, 5 * 60 * 1000);
+      
+      return;
+    }
+
+    // Use simplified assignment logic
+    const assignedVolunteer = await routeOptimizationService.findOptimalVolunteer(
+      task.pickupLocation,
+      availableVolunteers,
+      task.urgency
+    );
 
     if (assignedVolunteer) {
+      // DOUBLE CHECK capacity
+      const canAccept = await assignedVolunteer.canAcceptTask();
+      if (!canAccept) {
+        console.log(`⛔ Volunteer ${assignedVolunteer._id} cannot accept more tasks`);
+        
+        // Try next best volunteer recursively
+        await retryWithNextVolunteer(taskId, availableVolunteers, assignedVolunteer._id);
+        return;
+      }
+
+      // UPDATE task with volunteer assignment
       task.volunteer = assignedVolunteer._id;
       task.status = "assigned";
       await task.save();
 
+      // UPDATE donation with volunteer assignment
       await Donation.findByIdAndUpdate(task.donation._id, {
         assignedVolunteer: assignedVolunteer._id,
+        status: "scheduled"
       });
 
+      // SEND notification
       await notificationService.sendTaskAssignment(
         assignedVolunteer._id,
         taskId
       );
+
+      console.log(`✅ Volunteer ${assignedVolunteer._id} assigned to task: ${taskId}`);
     } else {
-      console.log("No suitable volunteer found for task:", taskId);
+      console.log("⛔ No suitable volunteer found for task:", taskId);
+      
+      // Schedule retry
+      setTimeout(() => {
+        console.log(`🔄 Retrying volunteer assignment for task: ${taskId}`);
+        assignVolunteerToTask(taskId);
+      }, 10 * 60 * 1000); // Retry in 10 minutes
     }
   } catch (error) {
-    console.error("Volunteer assignment error:", error);
+    console.error("💥 Volunteer assignment error:", error);
+    
+    // Emergency fallback - assign to any available volunteer
+    await emergencyVolunteerAssignment(taskId);
   }
 }
 
-// Controller functions
+// NEW: Retry with next best volunteer
+async function retryWithNextVolunteer(taskId, availableVolunteers, excludedVolunteerId) {
+  try {
+    const remainingVolunteers = availableVolunteers.filter(
+      v => v._id.toString() !== excludedVolunteerId.toString()
+    );
+
+    if (remainingVolunteers.length === 0) {
+      console.log("⛔ No alternative volunteers available");
+      return;
+    }
+
+    const task = await LogisticsTask.findById(taskId);
+    const nextVolunteer = await routeOptimizationService.findOptimalVolunteer(
+      task.pickupLocation,
+      remainingVolunteers,
+      task.urgency
+    );
+
+    if (nextVolunteer) {
+      const canAccept = await nextVolunteer.canAcceptTask();
+      if (canAccept) {
+        task.volunteer = nextVolunteer._id;
+        task.status = "assigned";
+        await task.save();
+
+        await Donation.findByIdAndUpdate(task.donation._id, {
+          assignedVolunteer: nextVolunteer._id,
+          status: "scheduled"
+        });
+
+        await notificationService.sendTaskAssignment(nextVolunteer._id, taskId);
+        console.log(`✅ Alternative volunteer ${nextVolunteer._id} assigned to task: ${taskId}`);
+      }
+    }
+  } catch (error) {
+    console.error("Retry volunteer assignment error:", error);
+  }
+}
+
+// NEW: Emergency fallback assignment
+async function emergencyVolunteerAssignment(taskId) {
+  try {
+    console.log(`🚨 Emergency volunteer assignment for task: ${taskId}`);
+    
+    const task = await LogisticsTask.findById(taskId);
+    const emergencyVolunteers = await User.find({
+      role: "volunteer",
+      status: "active",
+    })
+    .select("name email volunteerDetails")
+    .limit(5); // Limit to prevent overloading
+
+    for (const volunteer of emergencyVolunteers) {
+      try {
+        const canAccept = await volunteer.canAcceptTask();
+        if (canAccept) {
+          task.volunteer = volunteer._id;
+          task.status = "assigned";
+          await task.save();
+
+          await Donation.findByIdAndUpdate(task.donation._id, {
+            assignedVolunteer: volunteer._id,
+            status: "scheduled"
+          });
+
+          await notificationService.sendTaskAssignment(volunteer._id, taskId);
+          console.log(`🚨 EMERGENCY: Volunteer ${volunteer._id} assigned to task: ${taskId}`);
+          return;
+        }
+      } catch (volunteerError) {
+        console.error(`Emergency assignment error for volunteer ${volunteer._id}:`, volunteerError);
+        continue;
+      }
+    }
+
+    console.log("🚨 CRITICAL: No emergency volunteers available");
+  } catch (error) {
+    console.error("💥 CRITICAL: Emergency assignment failed:", error);
+  }
+}
+
 exports.createDonation = async (req, res) => {
   try {
-    console.log("Creating donation for user:", req.user.id);
+    console.log("🔄 Creating donation for user:", req.user.id);
 
     const {
       type,
@@ -133,29 +252,47 @@ exports.createDonation = async (req, res) => {
       });
     }
 
+    // Validate quantity
+    if (!quantity || !quantity.amount || quantity.amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        message: "Valid quantity amount is required",
+      });
+    }
+
     const donation = new Donation({
       donor: req.user.id,
       type,
       images: images || [],
       description: description || "",
-      quantity: quantity || { amount: 0, unit: "units" },
+      quantity: {
+        amount: quantity.amount,
+        unit: quantity.unit || "units",
+      },
       expectedQuantity: type === "bulk" ? expectedQuantity : undefined,
       scheduledPickup: type === "bulk" ? scheduledPickup : undefined,
       pickupAddress,
-      location,
+      location: {
+        lat: location.lat,
+        lng: location.lng,
+        geocoded: location.geocoded || false,
+      },
       categories: categories || [],
       tags: tags || [],
       urgency,
-      status: "active",
+      status: "pending", // Start as pending, will be updated after AI processing
     });
 
     await donation.save();
-    console.log("Donation created with ID:", donation._id);
+    console.log("✅ Donation created with ID:", donation._id);
 
     // Process with AI if images provided
     if (images && images.length > 0) {
       try {
-        console.log("Processing images with AI...");
+        console.log("🔍 Processing images with AI...");
+        donation.status = "ai_processing";
+        await donation.save();
+
         const aiAnalysis = await geminiService.analyzeFoodImages(images);
 
         donation.aiDescription = aiAnalysis.description;
@@ -180,19 +317,28 @@ exports.createDonation = async (req, res) => {
         );
         donation.handlingWindow = handlingWindow;
 
+        donation.status = "active"; // Activate donation after AI processing
         await donation.save();
-        console.log("AI processing completed for donation:", donation._id);
+        console.log("✅ AI processing completed for donation:", donation._id);
       } catch (aiError) {
-        console.error("AI processing failed:", aiError);
+        console.error("❌ AI processing failed:", aiError);
         // Continue with manual description if AI fails
+        donation.status = "active";
+        await donation.save();
       }
+    } else {
+      // No images, activate immediately
+      donation.status = "active";
+      await donation.save();
     }
 
-    // Start matching process immediately with enhanced error handling
-    await initiateMatching(donation._id);
+    // Start matching process asynchronously
+    initiateMatching(donation._id).catch((error) => {
+      console.error(`💥 Matching failed for donation ${donation._id}:`, error);
+    });
 
     const populatedDonation = await Donation.findById(donation._id)
-      .populate("donor", "name email")
+      .populate("donor", "name email contactInfo donorDetails")
       .populate("matchedRecipients.recipient", "name recipientDetails");
 
     res.status(201).json({
@@ -200,10 +346,11 @@ exports.createDonation = async (req, res) => {
       data: populatedDonation,
       message:
         "Donation created successfully" +
-        (images && images.length > 0 ? " - AI processing completed" : ""),
+        (images && images.length > 0 ? " - AI processing completed" : "") +
+        " - Matching process started",
     });
   } catch (error) {
-    console.error("Donation creation error:", error);
+    console.error("💥 Donation creation error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to create donation: " + error.message,
@@ -214,13 +361,21 @@ exports.createDonation = async (req, res) => {
 exports.acceptDonation = async (req, res) => {
   try {
     const { donationId } = req.params;
-    console.log("Accepting donation:", donationId, "by user:", req.user.id);
+    console.log("✅ Accepting donation:", donationId, "by user:", req.user.id);
 
     const donation = await Donation.findById(donationId);
     if (!donation) {
       return res.status(404).json({
         success: false,
         message: "Donation not found",
+      });
+    }
+
+    // Check if user is a recipient
+    if (req.user.role !== "recipient") {
+      return res.status(403).json({
+        success: false,
+        message: "Only recipients can accept donations",
       });
     }
 
@@ -235,16 +390,42 @@ exports.acceptDonation = async (req, res) => {
       });
     }
 
+    // Check if recipient can accept more donations
+    const recipient = await User.findById(req.user.id);
+    const canAccept = await recipient.canAcceptDonation(
+      donation.quantity.amount
+    );
+
+    if (!canAccept) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "You have reached your capacity limit. Cannot accept more donations at this time.",
+      });
+    }
+
+    // Update donation status
     donation.acceptedBy = req.user.id;
     donation.status = "matched";
     recipientMatch.status = "accepted";
     recipientMatch.respondedAt = new Date();
 
+    // Decline other offers for this donation
+    donation.matchedRecipients.forEach((match) => {
+      if (
+        match.recipient.toString() !== req.user.id &&
+        match.status === "offered"
+      ) {
+        match.status = "declined";
+        match.respondedAt = new Date();
+        match.declineReason = "Another recipient accepted the donation";
+      }
+    });
+
     await donation.save();
 
     // Create logistics task with urgency consideration
     const donor = await User.findById(donation.donor);
-    const recipient = await User.findById(req.user.id);
 
     const task = new LogisticsTask({
       donation: donationId,
@@ -252,32 +433,57 @@ exports.acceptDonation = async (req, res) => {
         address: donation.pickupAddress,
         lat: donation.location.lat,
         lng: donation.location.lng,
+        instructions: `Pick up from ${donor.name}`,
       },
       dropoffLocation: {
         address:
           recipient.recipientDetails?.address ||
           recipient.contactInfo?.address ||
           donation.pickupAddress,
-        lat: recipient.recipientDetails?.location?.lat || donation.location.lat,
-        lng: recipient.recipientDetails?.location?.lng || donation.location.lng,
+        lat:
+          recipient.recipientDetails?.location?.lat ||
+          recipient.contactInfo?.location?.lat ||
+          donation.location.lat,
+        lng:
+          recipient.recipientDetails?.location?.lng ||
+          recipient.contactInfo?.location?.lng ||
+          donation.location.lng,
+        contactPerson:
+          recipient.recipientDetails?.organizationName || recipient.name,
+        phone: recipient.contactInfo?.phone,
       },
       scheduledPickupTime:
         donation.type === "bulk"
           ? donation.scheduledPickup
-          : new Date(Date.now() + 2 * 60 * 60 * 1000),
+          : new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours from now
       status: "pending",
       urgency: donation.urgency || "normal",
+      specialInstructions:
+        donation.aiAnalysis?.suggestedHandling || "Handle with care",
     });
 
     await task.save();
-    console.log("Logistics task created:", task._id);
+    console.log("✅ Logistics task created:", task._id);
 
     // Assign volunteer using enhanced GA
     await assignVolunteerToTask(task._id);
 
+    // Send notifications
+    await notificationService.sendStatusUpdate(
+      donation.donor,
+      "Donation Accepted! 🎉",
+      `Your donation "${
+        donation.aiDescription || donation.description
+      }" has been accepted by ${
+        recipient.recipientDetails?.organizationName || recipient.name
+      }`,
+      { donationId: donation._id, recipientId: req.user.id }
+    );
+
     const populatedDonation = await Donation.findById(donationId)
       .populate("acceptedBy", "name recipientDetails")
-      .populate("assignedVolunteer", "name");
+      .populate("assignedVolunteer", "name")
+      .populate("donor", "name contactInfo");
 
     res.json({
       success: true,
@@ -285,7 +491,7 @@ exports.acceptDonation = async (req, res) => {
       message: "Donation accepted successfully",
     });
   } catch (error) {
-    console.error("Donation acceptance error:", error);
+    console.error("💥 Donation acceptance error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -296,11 +502,12 @@ exports.acceptDonation = async (req, res) => {
 exports.getAvailableDonations = async (req, res) => {
   try {
     const { page = 1, limit = 10, categories, distance } = req.query;
-    console.log("Fetching available donations for user:", req.user.id);
+    console.log("🔍 Fetching available donations for user:", req.user.id);
 
     let query = {
       status: "active",
       "matchedRecipients.recipient": req.user.id,
+      "matchedRecipients.status": "offered",
     };
 
     if (categories) {
@@ -325,7 +532,7 @@ exports.getAvailableDonations = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error("Get available donations error:", error);
+    console.error("💥 Get available donations error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -335,7 +542,7 @@ exports.getAvailableDonations = async (req, res) => {
 
 exports.uploadImages = async (req, res) => {
   try {
-    console.log("Uploading images...");
+    console.log("📤 Uploading images...");
     console.log("Files received:", req.files?.length || 0);
 
     if (!req.files || req.files.length === 0) {
@@ -386,10 +593,10 @@ exports.uploadImages = async (req, res) => {
             },
             (error, result) => {
               if (error) {
-                console.error(`Upload error for file ${index + 1}:`, error);
+                console.error(`❌ Upload error for file ${index + 1}:`, error);
                 reject(error);
               } else {
-                console.log(`File ${index + 1} uploaded successfully`);
+                console.log(`✅ File ${index + 1} uploaded successfully`);
                 resolve(result.secure_url);
               }
             }
@@ -399,7 +606,7 @@ exports.uploadImages = async (req, res) => {
     });
 
     const imageUrls = await Promise.all(uploadPromises);
-    console.log("All images uploaded successfully:", imageUrls.length);
+    console.log("✅ All images uploaded successfully:", imageUrls.length);
 
     res.json({
       success: true,
@@ -409,7 +616,7 @@ exports.uploadImages = async (req, res) => {
       message: `Successfully uploaded ${imageUrls.length} image(s)`,
     });
   } catch (error) {
-    console.error("Image upload error:", error);
+    console.error("💥 Image upload error:", error);
     res.status(500).json({
       success: false,
       message: `Upload failed: ${error.message}`,
@@ -419,7 +626,7 @@ exports.uploadImages = async (req, res) => {
 
 exports.getDonorDashboard = async (req, res) => {
   try {
-    console.log("Fetching donor dashboard for user:", req.user.id);
+    console.log("📊 Fetching donor dashboard for user:", req.user.id);
 
     const donations = await Donation.find({ donor: req.user.id })
       .populate("acceptedBy", "name recipientDetails.organizationName")
@@ -443,7 +650,7 @@ exports.getDonorDashboard = async (req, res) => {
       data: { donations, stats },
     });
   } catch (error) {
-    console.error("Donor dashboard error:", error);
+    console.error("💥 Donor dashboard error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -454,7 +661,7 @@ exports.getDonorDashboard = async (req, res) => {
 exports.getDonationDetails = async (req, res) => {
   try {
     const { donationId } = req.params;
-    console.log("Fetching donation details:", donationId);
+    console.log("🔍 Fetching donation details:", donationId);
 
     const donation = await Donation.findById(donationId)
       .populate("donor", "name contactInfo donorDetails")
@@ -487,7 +694,7 @@ exports.getDonationDetails = async (req, res) => {
       data: donation,
     });
   } catch (error) {
-    console.error("Get donation details error:", error);
+    console.error("💥 Get donation details error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -495,12 +702,11 @@ exports.getDonationDetails = async (req, res) => {
   }
 };
 
-// New controller functions for the additional routes
 exports.updateDonationStatus = async (req, res) => {
   try {
     const { donationId } = req.params;
     const { status } = req.body;
-    console.log("Updating donation status:", donationId, "to:", status);
+    console.log("🔄 Updating donation status:", donationId, "to:", status);
 
     const donation = await Donation.findById(donationId);
 
@@ -528,7 +734,7 @@ exports.updateDonationStatus = async (req, res) => {
       data: donation,
     });
   } catch (error) {
-    console.error("Update donation status error:", error);
+    console.error("💥 Update donation status error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -563,7 +769,7 @@ exports.getDonationStats = async (req, res) => {
 
     res.json({ success: true, data: stats });
   } catch (error) {
-    console.error("Get donation stats error:", error);
+    console.error("💥 Get donation stats error:", error);
     res.status(500).json({ success: false, message: error.message });
   }
 };
@@ -571,7 +777,12 @@ exports.getDonationStats = async (req, res) => {
 exports.searchAvailableDonations = async (req, res) => {
   try {
     const { query, categories, maxDistance = 50 } = req.query;
-    console.log("Searching donations for user:", req.user.id, "query:", query);
+    console.log(
+      "🔍 Searching donations for user:",
+      req.user.id,
+      "query:",
+      query
+    );
 
     const recipient = await User.findById(req.user.id);
     const recipientLocation =
@@ -580,6 +791,7 @@ exports.searchAvailableDonations = async (req, res) => {
     let searchCriteria = {
       status: "active",
       "matchedRecipients.recipient": req.user.id,
+      "matchedRecipients.status": "offered",
     };
 
     // Text search
@@ -626,7 +838,7 @@ exports.searchAvailableDonations = async (req, res) => {
       data: donations,
     });
   } catch (error) {
-    console.error("Search donations error:", error);
+    console.error("💥 Search donations error:", error);
     res.status(500).json({
       success: false,
       message: error.message,
@@ -645,7 +857,7 @@ exports.analyzeFoodImages = async (req, res) => {
       });
     }
 
-    console.log("Analyzing food images with AI...");
+    console.log("🔍 Analyzing food images with AI...");
 
     // Call Gemini AI service for analysis
     const aiAnalysis = await geminiService.analyzeFoodImages(images);
@@ -656,7 +868,7 @@ exports.analyzeFoodImages = async (req, res) => {
       message: "AI analysis completed successfully",
     });
   } catch (error) {
-    console.error("Image analysis error:", error);
+    console.error("💥 Image analysis error:", error);
     res.status(500).json({
       success: false,
       message: "Failed to analyze images: " + error.message,

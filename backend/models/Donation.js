@@ -1,160 +1,189 @@
 const mongoose = require("mongoose");
 
-const donationSchema = new mongoose.Schema({
-  donor: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
-  },
-  type: {
-    type: String,
-    enum: ["normal", "bulk"],
-    required: true,
-  },
-  status: {
-    type: String,
-    enum: [
-      "pending",
-      "ai_processing",
-      "active",
-      "matched",
-      "scheduled",
-      "picked_up",
-      "delivered",
-      "cancelled",
-      "expired",
+const donationSchema = new mongoose.Schema(
+  {
+    donor: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    type: {
+      type: String,
+      enum: ["normal", "bulk"],
+      required: true,
+    },
+    status: {
+      type: String,
+      enum: [
+        "pending",
+        "ai_processing",
+        "active",
+        "matched",
+        "scheduled",
+        "picked_up",
+        "delivered",
+        "cancelled",
+        "expired",
+      ],
+      default: "pending",
+    },
+
+    // Enhanced food details
+    images: [String],
+    description: String,
+    aiDescription: String,
+    categories: [String],
+    tags: [String],
+    quantity: {
+      amount: { type: Number, required: true, min: 1 },
+      unit: { type: String, required: true, default: "units" },
+    },
+    handlingWindow: {
+      start: Date,
+      end: Date,
+    },
+
+    // Bulk donation specific
+    scheduledPickup: Date,
+    expectedQuantity: String,
+    eventDetails: {
+      eventName: String,
+      eventType: String,
+      attendees: Number,
+    },
+
+    // Enhanced location
+    pickupAddress: { type: String, required: true },
+    location: {
+      lat: { type: Number, required: true },
+      lng: { type: Number, required: true },
+      geocoded: { type: Boolean, default: false },
+    },
+
+    // Enhanced AI Analysis results
+    aiAnalysis: {
+      foodTypes: [String],
+      freshnessScore: { type: Number, min: 0, max: 1 },
+      safetyWarnings: [String],
+      suggestedHandling: String,
+      confidenceScore: { type: Number, min: 0, max: 1 },
+      urgency: {
+        type: String,
+        enum: ["critical", "high", "normal"],
+        default: "normal",
+      },
+      nutritionalInfo: {
+        calories: Number,
+        protein: Number,
+        carbs: Number,
+        fats: Number,
+      },
+      allergens: [String],
+      dietaryInfo: [String],
+      estimatedShelfLife: String,
+    },
+
+    // Enhanced matching
+    matchedRecipients: [
+      {
+        recipient: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
+          required: true,
+        },
+        matchScore: {
+          type: Number,
+          required: true,
+          min: 0,
+          max: 1,
+        },
+        status: {
+          type: String,
+          enum: ["offered", "accepted", "declined", "expired"],
+          default: "offered",
+        },
+        respondedAt: Date,
+        declineReason: String,
+        matchingMethod: String,
+        matchReasons: [String],
+        createdAt: { type: Date, default: Date.now },
+      },
     ],
-    default: "pending",
-  },
 
-  // Enhanced food details
-  images: [String],
-  description: String,
-  aiDescription: String,
-  categories: [String],
-  tags: [String],
-  quantity: {
-    amount: Number,
-    unit: String,
-  },
-  handlingWindow: {
-    start: Date,
-    end: Date,
-  },
+    acceptedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
+    assignedVolunteer: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+    },
 
-  // Bulk donation specific
-  scheduledPickup: Date,
-  expectedQuantity: String,
-  eventDetails: {
-    eventName: String,
-    eventType: String,
-    attendees: Number,
-  },
-
-  // Enhanced location
-  pickupAddress: String,
-  location: {
-    lat: Number,
-    lng: Number,
-    geocoded: Boolean,
-  },
-
-  // Enhanced AI Analysis results
-  aiAnalysis: {
-    foodTypes: [String],
-    freshnessScore: Number,
-    safetyWarnings: [String],
-    suggestedHandling: String,
-    confidenceScore: Number,
+    // Enhanced metadata
     urgency: {
       type: String,
       enum: ["critical", "high", "normal"],
       default: "normal",
     },
-    nutritionalInfo: {
-      calories: Number,
-      protein: Number,
-      carbs: Number,
-      fats: Number,
+    priority: {
+      type: Number,
+      default: 1,
+      min: 1,
+      max: 10,
     },
-  },
 
-  // Enhanced matching
-  matchedRecipients: [
-    {
-      recipient: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-      matchScore: Number,
-      status: {
-        type: String,
-        enum: ["offered", "accepted", "declined", "expired"],
-        default: "offered",
+    // Food safety compliance
+    safetyChecklist: [
+      {
+        item: String,
+        completed: { type: Boolean, default: false },
+        verifiedBy: String,
+        timestamp: Date,
       },
-      respondedAt: Date,
-      matchingMethod: String, // 'ai' or 'fallback'
-      matchReasons: [String], // Why this match was made
+    ],
+
+    // Feedback and ratings
+    donorRating: {
+      type: Number,
+      min: 1,
+      max: 5,
     },
-  ],
-
-  acceptedBy: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-  },
-  assignedVolunteer: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-  },
-
-  // Enhanced metadata
-  urgency: {
-    type: String,
-    enum: ["critical", "high", "normal"],
-    default: "normal",
-  },
-  priority: {
-    type: Number,
-    default: 1,
-    min: 1,
-    max: 10,
-  },
-
-  // Food safety compliance
-  safetyChecklist: [
-    {
-      item: String,
-      completed: Boolean,
-      verifiedBy: String,
-      timestamp: Date,
+    donorFeedback: String,
+    recipientRating: {
+      type: Number,
+      min: 1,
+      max: 5,
     },
-  ],
+    recipientFeedback: String,
 
-  // Feedback and ratings
-  donorRating: {
-    type: Number,
-    min: 1,
-    max: 5,
-  },
-  donorFeedback: String,
-  recipientRating: {
-    type: Number,
-    min: 1,
-    max: 5,
-  },
-  recipientFeedback: String,
+    // Analytics
+    views: {
+      type: Number,
+      default: 0,
+    },
+    offersSent: {
+      type: Number,
+      default: 0,
+    },
 
-  // Analytics
-  views: {
-    type: Number,
-    default: 0,
-  },
-  offersSent: {
-    type: Number,
-    default: 0,
-  },
+    // Timestamps
+    createdAt: { type: Date, default: Date.now },
+    updatedAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date },
 
-  createdAt: { type: Date, default: Date.now },
-  updatedAt: { type: Date, default: Date.now },
-  expiresAt: { type: Date }, // Auto-expire donations
-});
+    // Delivery tracking
+    pickupTime: Date,
+    deliveryTime: Date,
+
+    // Matching process tracking
+    matchingStartedAt: Date,
+    matchingCompletedAt: Date,
+  },
+  {
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
+);
 
 // Indexes for performance
 donationSchema.index({ donor: 1, status: 1 });
@@ -162,6 +191,10 @@ donationSchema.index({ status: 1, urgency: -1 });
 donationSchema.index({ "location.lat": 1, "location.lng": 1 });
 donationSchema.index({ categories: 1 });
 donationSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+donationSchema.index({ acceptedBy: 1, status: 1 });
+donationSchema.index({ "matchedRecipients.recipient": 1 });
+donationSchema.index({ "matchedRecipients.status": 1 });
+donationSchema.index({ createdAt: -1 });
 
 // Pre-save middleware
 donationSchema.pre("save", function (next) {
@@ -171,7 +204,7 @@ donationSchema.pre("save", function (next) {
   if (this.handlingWindow?.end && !this.expiresAt) {
     this.expiresAt = new Date(
       this.handlingWindow.end.getTime() + 24 * 60 * 60 * 1000
-    ); // 24 hours after handling window
+    );
   }
 
   // Auto-expire if past handling window
@@ -181,6 +214,11 @@ donationSchema.pre("save", function (next) {
     this.status === "active"
   ) {
     this.status = "expired";
+  }
+
+  // Update offers sent count
+  if (this.isModified("matchedRecipients")) {
+    this.offersSent = this.matchedRecipients.length;
   }
 
   next();
@@ -205,44 +243,96 @@ donationSchema.virtual("matchRate").get(function () {
   return (accepted / this.matchedRecipients.length) * 100;
 });
 
-// Static method to find active donations by location
-donationSchema.statics.findActiveByLocation = function (
-  lat,
-  lng,
-  maxDistance = 50
-) {
-  return this.find({
-    status: "active",
-    "location.lat": {
-      $gte: lat - maxDistance / 111,
-      $lte: lat + maxDistance / 111,
-    },
-    "location.lng": {
-      $gte: lng - maxDistance / (111 * Math.cos((lat * Math.PI) / 180)),
-      $lte: lng + maxDistance / (111 * Math.cos((lat * Math.PI) / 180)),
-    },
-  }).populate("donor", "name contactInfo");
+// Virtual for isExpiringSoon
+donationSchema.virtual("isExpiringSoon").get(function () {
+  if (!this.handlingWindow?.end) return false;
+  const timeRemaining = this.timeRemaining;
+  return timeRemaining > 0 && timeRemaining <= 4 * 60 * 60 * 1000; // 4 hours
+});
+
+// NEW: Static method to find donations by recipient
+donationSchema.statics.findByRecipient = function (recipientId, options = {}) {
+  const { status, includeOffered = false } = options;
+
+  let query = {
+    $or: [
+      { acceptedBy: recipientId },
+      { "matchedRecipients.recipient": recipientId },
+    ],
+  };
+
+  if (status) {
+    query.status = status;
+  }
+
+  if (!includeOffered) {
+    query["matchedRecipients.status"] = { $ne: "offered" };
+  }
+
+  return this.find(query)
+    .populate("donor", "name email contactInfo donorDetails")
+    .populate("acceptedBy", "name email recipientDetails")
+    .populate("assignedVolunteer", "name email volunteerDetails")
+    .populate("matchedRecipients.recipient", "name email recipientDetails")
+    .sort({ createdAt: -1 });
 };
 
-// Static method to find donations needing matching
-donationSchema.statics.findNeedMatching = function () {
+// NEW: Static method to find available donations for recipient
+donationSchema.statics.findAvailableForRecipient = function (recipientId) {
   return this.find({
     status: "active",
     $or: [
-      { matchedRecipients: { $size: 0 } },
+      { "matchedRecipients.recipient": recipientId },
       {
-        matchedRecipients: {
-          $not: {
-            $elemMatch: { status: { $in: ["accepted", "offered"] } },
-          },
-        },
+        // Also show donations that could potentially match
+        "matchedRecipients.recipient": { $ne: recipientId },
+        expiresAt: { $gt: new Date() },
       },
     ],
-  });
+  })
+    .populate("donor", "name email contactInfo donorDetails")
+    .sort({ urgency: -1, createdAt: -1 });
+};
+
+// NEW: Static method to get donor statistics
+donationSchema.statics.getDonorStats = function (donorId) {
+  return this.aggregate([
+    {
+      $match: { donor: donorId },
+    },
+    {
+      $group: {
+        _id: "$status",
+        count: { $sum: 1 },
+        totalQuantity: { $sum: "$quantity.amount" },
+      },
+    },
+  ]);
+};
+
+// NEW: Static method to get recipient statistics
+donationSchema.statics.getRecipientStats = function (recipientId) {
+  return this.aggregate([
+    {
+      $match: {
+        $or: [
+          { acceptedBy: recipientId },
+          { "matchedRecipients.recipient": recipientId },
+        ],
+      },
+    },
+    {
+      $group: {
+        _id: "$status",
+        count: { $sum: 1 },
+        totalQuantity: { $sum: "$quantity.amount" },
+      },
+    },
+  ]);
 };
 
 // Instance method to check if donation is expiring soon
-donationSchema.methods.isExpiringSoon = function (hours = 4) {
+donationSchema.methods.checkIfExpiringSoon = function (hours = 4) {
   if (this.handlingWindow?.end) {
     const now = new Date();
     const timeRemaining = this.handlingWindow.end - now;
@@ -266,6 +356,50 @@ donationSchema.methods.getBestMatch = function () {
   }
 
   return null;
+};
+
+// Instance method to find and store matches
+donationSchema.methods.findAndStoreMatches = async function () {
+  try {
+    const matchingService = require("../services/matchingService");
+    console.log(`🔍 Starting matching process for donation: ${this._id}`);
+
+    const matches = await matchingService.findBestMatches(this._id);
+
+    if (matches && matches.length > 0) {
+      this.matchedRecipients = matches.map((match) => ({
+        recipient: match.recipient._id,
+        matchScore: match.totalScore,
+        status: "offered",
+        matchingMethod: match.matchingMethod || "ai",
+        matchReasons: match.matchReasons || [],
+      }));
+
+      this.matchingCompletedAt = new Date();
+      await this.save();
+
+      console.log(
+        `✅ Stored ${matches.length} matches for donation: ${this._id}`
+      );
+
+      // Send notifications
+      const notificationService = require("../services/notificationService");
+      for (const match of matches) {
+        await notificationService.sendDonationOffer(
+          match.recipient._id,
+          this._id,
+          match.totalScore
+        );
+      }
+    } else {
+      console.log(`❌ No matches found for donation: ${this._id}`);
+    }
+  } catch (error) {
+    console.error(
+      `💥 Error in findAndStoreMatches for donation ${this._id}:`,
+      error
+    );
+  }
 };
 
 module.exports = mongoose.model("Donation", donationSchema);

@@ -7,152 +7,182 @@ class RouteOptimizationService {
   constructor() {
     this.googleMapsKey = process.env.GOOGLE_MAPS_API_KEY;
     this.useRealTimeTraffic = !!this.googleMapsKey;
+    this.assignmentCache = new Map();
+    this.cacheTimeout = 2 * 60 * 1000; // 2 minutes
   }
 
-  // Enhanced Genetic Algorithm for volunteer assignment with urgency consideration
+  // SIMPLIFIED: Rule-based volunteer assignment
   async findOptimalVolunteer(
     pickupLocation,
     availableVolunteers,
     urgency = "normal"
   ) {
-    if (availableVolunteers.length === 0) {
-      throw new Error("No available volunteers");
+    const cacheKey = `assignment_${pickupLocation.lat}_${pickupLocation.lng}_${availableVolunteers.length}`;
+    const cached = this.assignmentCache.get(cacheKey);
+
+    if (cached && Date.now() - cached.timestamp < this.cacheTimeout) {
+      return cached.result;
     }
 
-    if (availableVolunteers.length === 1) {
-      return availableVolunteers[0];
-    }
-
-    const populationSize = Math.min(20, availableVolunteers.length * 2);
-    const generations = 50;
-    const mutationRate = 0.1;
-
-    let population = this.initializePopulation(
-      availableVolunteers,
-      populationSize
-    );
-
-    for (let gen = 0; gen < generations; gen++) {
-      const fitnessScores = await Promise.all(
-        population.map((volunteer) =>
-          this.calculateEnhancedFitness(volunteer, pickupLocation, urgency)
-        )
+    try {
+      console.log(
+        `🔍 Assigning volunteer from ${availableVolunteers.length} candidates`
       );
 
-      population = this.evolvePopulation(
-        population,
-        fitnessScores,
-        mutationRate,
-        availableVolunteers
+      if (availableVolunteers.length === 0) {
+        throw new Error("No available volunteers");
+      }
+
+      if (availableVolunteers.length === 1) {
+        const volunteer = availableVolunteers[0];
+        const canAccept = await volunteer.canAcceptTask();
+        return canAccept ? volunteer : null;
+      }
+
+      // Enhanced scoring with practical factors
+      const scoredVolunteers = await Promise.all(
+        availableVolunteers.map(async (volunteer) => {
+          try {
+            const score = await this.calculatePracticalScore(
+              volunteer,
+              pickupLocation,
+              urgency
+            );
+            return { volunteer, score };
+          } catch (error) {
+            console.error(`Error scoring volunteer ${volunteer._id}:`, error);
+            return { volunteer, score: 0 };
+          }
+        })
       );
+
+      // Filter out volunteers who can't accept tasks
+      const validVolunteers = [];
+      for (const { volunteer, score } of scoredVolunteers) {
+        const canAccept = await volunteer.canAcceptTask();
+        if (canAccept && score > 0) {
+          validVolunteers.push({ volunteer, score });
+        }
+      }
+
+      if (validVolunteers.length === 0) {
+        console.log("⛔ No suitable volunteers found after capacity check");
+        return null;
+      }
+
+      // Sort by score and return best
+      validVolunteers.sort((a, b) => b.score - a.score);
+      const bestVolunteer = validVolunteers[0].volunteer;
+
+      console.log(
+        `✅ Assigned volunteer ${
+          bestVolunteer._id
+        } with score ${validVolunteers[0].score.toFixed(2)}`
+      );
+
+      // Cache result
+      this.assignmentCache.set(cacheKey, {
+        result: bestVolunteer,
+        timestamp: Date.now(),
+      });
+
+      return bestVolunteer;
+    } catch (error) {
+      console.error("Volunteer assignment error:", error);
+      return null;
     }
-
-    // Return best volunteer
-    const finalFitness = await Promise.all(
-      population.map((volunteer) =>
-        this.calculateEnhancedFitness(volunteer, pickupLocation, urgency)
-      )
-    );
-    const bestIndex = finalFitness.indexOf(Math.max(...finalFitness));
-
-    return population[bestIndex];
   }
 
-  async calculateEnhancedFitness(volunteer, pickupLocation, urgency) {
+  // PRACTICAL scoring based on real-world factors
+  async calculatePracticalScore(volunteer, pickupLocation, urgency) {
+    let score = 0;
+    const maxScore = 100;
+
+    try {
+      // 1. PROXIMITY (40 points max)
+      const proximityScore = await this.calculateProximityScore(
+        volunteer,
+        pickupLocation
+      );
+      score += proximityScore * 40;
+
+      // 2. AVAILABILITY & CAPACITY (30 points max)
+      const capacityScore = await this.calculateCapacityScore(volunteer);
+      score += capacityScore * 30;
+
+      // 3. VEHICLE SUITABILITY (20 points max)
+      const vehicleScore = this.calculateVehicleScore(volunteer);
+      score += vehicleScore * 20;
+
+      // 4. URGENCY BONUS (10 points max)
+      const urgencyBonus = this.calculateUrgencyBonus(urgency);
+      score += urgencyBonus;
+
+      // 5. RELIABILITY BONUS (historical performance)
+      const reliabilityBonus = await this.calculateReliabilityBonus(volunteer);
+      score += reliabilityBonus;
+
+      console.log(
+        `📊 Volunteer ${
+          volunteer._id
+        } scores: proximity=${proximityScore.toFixed(
+          2
+        )}, capacity=${capacityScore.toFixed(
+          2
+        )}, vehicle=${vehicleScore.toFixed(2)}, total=${score.toFixed(2)}`
+      );
+
+      return Math.min(score, maxScore);
+    } catch (error) {
+      console.error(
+        `Score calculation error for volunteer ${volunteer._id}:`,
+        error
+      );
+      return 0;
+    }
+  }
+
+  // REAL proximity calculation with fallback
+  async calculateProximityScore(volunteer, pickupLocation) {
     try {
       const volunteerLocation =
         volunteer.volunteerDetails?.currentLocation ||
         volunteer.contactInfo?.location;
 
-      if (!volunteerLocation) {
-        return 0.1; // Low fitness if no location
+      if (!volunteerLocation || !pickupLocation) {
+        return 0.5; // Neutral score if locations missing
       }
 
-      // Calculate enhanced distance with traffic consideration
-      const distanceData = await this.calculateEnhancedDistance(
-        volunteerLocation,
-        pickupLocation
-      );
-      const distance = distanceData.distance;
-      const trafficMultiplier = distanceData.trafficMultiplier || 1.0;
+      // Use real distance calculation if API available, else use simple distance
+      let distance;
+      if (this.useRealTimeTraffic) {
+        const distanceData = await this.calculateRealDistance(
+          volunteerLocation,
+          pickupLocation
+        );
+        distance = distanceData.distance;
+      } else {
+        distance = this.calculateSimpleDistance(
+          volunteerLocation,
+          pickupLocation
+        );
+      }
 
-      // Vehicle suitability with fuel efficiency
-      const vehicleScore = this.calculateEnhancedVehicleSuitability(volunteer);
+      // Convert to score: closer = higher score
+      // Assume 50km max distance for scoring
+      const maxDistance = 50000; // meters
+      const distanceScore = Math.max(0, 1 - distance / maxDistance);
 
-      // Availability score
-      const availabilityScore = volunteer.volunteerDetails?.isAvailable ? 1 : 0;
-
-      // Current workload penalty
-      const currentTasks = await LogisticsTask.countDocuments({
-        volunteer: volunteer._id,
-        status: { $in: ["assigned", "picked_up", "in_transit"] },
-      });
-      const workloadPenalty = Math.max(0, 1 - currentTasks * 0.2);
-
-      // Urgency multiplier
-      const urgencyMultipliers = {
-        critical: 1.5, // Perishable foods
-        high: 1.3, // Prepared meals
-        normal: 1.0, // Non-perishables
-      };
-      const urgencyScore = urgencyMultipliers[urgency] || 1.0;
-
-      // Fuel efficiency score
-      const fuelScore = this.calculateFuelEfficiency(volunteer, distance);
-
-      // Enhanced fitness calculation with traffic consideration
-      const distanceScore = 1 / (1 + (distance * trafficMultiplier) / 1000);
-
-      return (
-        distanceScore * 0.25 +
-        vehicleScore * 0.2 +
-        availabilityScore * 0.15 +
-        workloadPenalty * 0.15 +
-        urgencyScore * 0.1 +
-        fuelScore * 0.1 +
-        (1 - trafficMultiplier) * 0.05 // Prefer routes with less traffic
-      );
+      return Math.min(distanceScore, 1.0);
     } catch (error) {
-      console.error("Enhanced fitness calculation error:", error);
-      return 0.1;
+      console.error("Proximity calculation error:", error);
+      return 0.3; // Default low score
     }
   }
 
-  async calculateEnhancedDistance(origin, destination) {
+  // REAL distance calculation using Google Distance Matrix
+  async calculateRealDistance(origin, destination) {
     try {
-      if (this.useRealTimeTraffic) {
-        const response = await axios.get(
-          `https://maps.googleapis.com/maps/api/distancematrix/json`,
-          {
-            params: {
-              origins: `${origin.lat},${origin.lng}`,
-              destinations: `${destination.lat},${destination.lng}`,
-              key: this.googleMapsKey,
-              departure_time: "now",
-              traffic_model: "best_guess",
-            },
-          }
-        );
-
-        if (response.data.rows[0]?.elements[0]?.status === "OK") {
-          const element = response.data.rows[0].elements[0];
-          const distance = element.distance.value; // meters
-          const durationInTraffic =
-            element.duration_in_traffic?.value || element.duration.value;
-          const normalDuration = element.duration.value;
-
-          const trafficMultiplier = durationInTraffic / normalDuration;
-
-          return {
-            distance,
-            duration: durationInTraffic,
-            trafficMultiplier: Math.min(trafficMultiplier, 3.0), // Cap at 3x
-            trafficLevel: this.getTrafficLevel(trafficMultiplier),
-          };
-        }
-      }
-
-      // Fallback to basic distance calculation
       const response = await axios.get(
         `https://maps.googleapis.com/maps/api/distancematrix/json`,
         {
@@ -161,329 +191,264 @@ class RouteOptimizationService {
             destinations: `${destination.lat},${destination.lng}`,
             key: this.googleMapsKey,
           },
+          timeout: 5000, // 5 second timeout
         }
       );
 
       if (response.data.rows[0]?.elements[0]?.status === "OK") {
+        const element = response.data.rows[0].elements[0];
         return {
-          distance: response.data.rows[0].elements[0].distance.value,
-          duration: response.data.rows[0].elements[0].duration.value,
-          trafficMultiplier: 1.0,
-          trafficLevel: "unknown",
+          distance: element.distance.value, // meters
+          duration: element.duration.value, // seconds
+          status: "success",
         };
       }
-
-      return {
-        distance: 10000,
-        duration: 3600,
-        trafficMultiplier: 1.0,
-        trafficLevel: "unknown",
-      };
     } catch (error) {
-      console.error("Enhanced distance calculation error:", error);
-      return {
-        distance: 10000,
-        duration: 3600,
-        trafficMultiplier: 1.0,
-        trafficLevel: "unknown",
-      };
+      console.error("Real distance API error:", error.message);
     }
-  }
 
-  getTrafficLevel(trafficMultiplier) {
-    if (trafficMultiplier >= 2.0) return "heavy";
-    if (trafficMultiplier >= 1.5) return "moderate";
-    if (trafficMultiplier >= 1.2) return "light";
-    return "smooth";
-  }
-
-  calculateEnhancedVehicleSuitability(volunteer) {
-    const vehicle = volunteer.volunteerDetails?.vehicleType || "none";
-
-    const suitability = {
-      bike: { base: 0.6, capacity: 5, range: 10 },
-      car: { base: 0.8, capacity: 50, range: 100 },
-      van: { base: 0.9, capacity: 200, range: 150 },
-      truck: { base: 1.0, capacity: 500, range: 200 },
-      none: { base: 0.3, capacity: 10, range: 5 },
+    // Fallback to simple distance
+    const simpleDistance = this.calculateSimpleDistance(origin, destination);
+    return {
+      distance: simpleDistance * 100000, // Convert to approximate meters
+      duration: simpleDistance * 3600, // Convert to approximate seconds
+      status: "fallback",
     };
-
-    return suitability[vehicle]?.base || 0.5;
   }
 
-  calculateFuelEfficiency(volunteer, distance) {
-    const vehicle = volunteer.volunteerDetails?.vehicleType || "none";
-
-    const efficiency = {
-      bike: 1.0, // Most efficient
-      none: 0.9, // Walking
-      car: 0.7, // Moderate
-      van: 0.5, // Less efficient
-      truck: 0.3, // Least efficient
-    };
-
-    const baseEfficiency = efficiency[vehicle] || 0.5;
-
-    // Adjust based on distance (longer distances are less efficient for some vehicles)
-    let distanceFactor = 1.0;
-    if (vehicle === "bike" && distance > 5000) distanceFactor = 0.7;
-    if (vehicle === "none" && distance > 2000) distanceFactor = 0.5;
-
-    return baseEfficiency * distanceFactor;
+  calculateSimpleDistance(loc1, loc2) {
+    // Haversine distance in kilometers
+    const R = 6371; // Earth's radius in km
+    const dLat = this.toRad(loc2.lat - loc1.lat);
+    const dLon = this.toRad(loc2.lng - loc1.lng);
+    const a =
+      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+      Math.cos(this.toRad(loc1.lat)) *
+        Math.cos(this.toRad(loc2.lat)) *
+        Math.sin(dLon / 2) *
+        Math.sin(dLon / 2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    return R * c;
   }
 
-  initializePopulation(volunteers, size) {
-    const population = [];
-    for (let i = 0; i < size; i++) {
-      const randomVolunteer =
-        volunteers[Math.floor(Math.random() * volunteers.length)];
-      population.push(randomVolunteer);
-    }
-    return population;
+  toRad(degrees) {
+    return degrees * (Math.PI / 180);
   }
 
-  evolvePopulation(
-    population,
-    fitnessScores,
-    mutationRate,
-    availableVolunteers
-  ) {
-    const newPopulation = [];
-
-    // Elitism: keep best individual
-    const bestIndex = fitnessScores.indexOf(Math.max(...fitnessScores));
-    newPopulation.push(population[bestIndex]);
-
-    // Create rest of population through selection and mutation
-    while (newPopulation.length < population.length) {
-      const parent1 = this.tournamentSelection(population, fitnessScores);
-      const parent2 = this.tournamentSelection(population, fitnessScores);
-
-      let child = Math.random() > 0.5 ? parent1 : parent2;
-
-      // Mutation
-      if (Math.random() < mutationRate) {
-        child =
-          availableVolunteers[
-            Math.floor(Math.random() * availableVolunteers.length)
-          ];
-      }
-
-      newPopulation.push(child);
-    }
-
-    return newPopulation;
-  }
-
-  tournamentSelection(population, fitnessScores, tournamentSize = 3) {
-    let best = null;
-    let bestFitness = -1;
-
-    for (let i = 0; i < tournamentSize; i++) {
-      const randomIndex = Math.floor(Math.random() * population.length);
-      if (fitnessScores[randomIndex] > bestFitness) {
-        best = population[randomIndex];
-        bestFitness = fitnessScores[randomIndex];
-      }
-    }
-
-    return best;
-  }
-
-  async optimizeMultiStopRoute(waypoints) {
+  // REAL capacity scoring
+  async calculateCapacityScore(volunteer) {
     try {
-      if (waypoints.length <= 1) {
-        return {
-          waypoints: waypoints,
-          totalDistance: 0,
-          estimatedDuration: 0,
-          trafficConditions: "normal",
-        };
+      const currentTasks = await LogisticsTask.countDocuments({
+        volunteer: volunteer._id,
+        status: { $in: ["assigned", "picked_up", "in_transit"] },
+      });
+
+      const volunteerCapacity = volunteer.volunteerDetails?.capacity || 5;
+      const utilization = currentTasks / volunteerCapacity;
+
+      // Score based on utilization
+      if (utilization >= 1.0) return 0; // Full
+      if (utilization >= 0.8) return 0.2; // Very busy
+      if (utilization >= 0.6) return 0.5; // Busy
+      if (utilization >= 0.4) return 0.7; // Moderate
+      if (utilization >= 0.2) return 0.9; // Light
+      return 1.0; // Available
+    } catch (error) {
+      console.error("Capacity calculation error:", error);
+      return 0.5;
+    }
+  }
+
+  // ENHANCED vehicle scoring
+  calculateVehicleScore(volunteer) {
+    const vehicle = volunteer.volunteerDetails?.vehicleType || "none";
+
+    const vehicleScores = {
+      truck: 1.0, // Best for large donations
+      van: 0.9, // Good for medium donations
+      car: 0.7, // Standard
+      bike: 0.4, // Limited capacity
+      none: 0.2, // Walking
+    };
+
+    return vehicleScores[vehicle] || 0.5;
+  }
+
+  calculateUrgencyBonus(urgency) {
+    const urgencyScores = {
+      critical: 10,
+      high: 6,
+      normal: 0,
+    };
+    return urgencyScores[urgency] || 0;
+  }
+
+  async calculateReliabilityBonus(volunteer) {
+    try {
+      // Calculate based on historical task completion
+      const completedTasks = await LogisticsTask.countDocuments({
+        volunteer: volunteer._id,
+        status: "delivered",
+      });
+
+      const totalTasks = await LogisticsTask.countDocuments({
+        volunteer: volunteer._id,
+      });
+
+      if (totalTasks === 0) return 2; // New volunteer bonus
+
+      const completionRate = completedTasks / totalTasks;
+      return completionRate * 5; // Max 5 points for reliability
+    } catch (error) {
+      return 0;
+    }
+  }
+
+  // SIMPLIFIED route optimization
+  async optimizeMultiStopRoute(tasks) {
+    try {
+      if (tasks.length <= 1) {
+        return this.createBasicRoute(tasks);
       }
+
+      // Group by task and use simple optimization
+      const optimizedTasks = this.optimizeTaskSequence(tasks);
 
       if (this.useRealTimeTraffic) {
-        // Use Google Routes API for optimization with traffic
-        const response = await axios.post(
-          `https://routes.googleapis.com/directions/v2:computeRoutes`,
-          {
-            origin: waypoints[0],
-            destination: waypoints[waypoints.length - 1],
-            intermediates: waypoints.slice(1, -1),
-            travelMode: "DRIVE",
-            optimizeWaypointOrder: true,
-            routingPreference: "TRAFFIC_AWARE",
-            computeAlternativeRoutes: false,
-          },
-          {
-            headers: {
-              "Content-Type": "application/json",
-              "X-Goog-Api-Key": this.googleMapsKey,
-              "X-Goog-FieldMask":
-                "routes.optimizedIntermediateWaypointIndex,routes.duration,routes.distanceMeters,routes.polyline,routes.travelAdvisory",
-            },
-          }
-        );
-
-        if (response.data.routes && response.data.routes.length > 0) {
-          const route = response.data.routes[0];
-          return {
-            waypoints: waypoints.map((wp, index) => ({
-              ...wp,
-              sequence: route.optimizedIntermediateWaypointIndex
-                ? route.optimizedIntermediateWaypointIndex.indexOf(index)
-                : index,
-            })),
-            totalDistance: route.distanceMeters,
-            estimatedDuration: route.duration,
-            polyline: route.polyline,
-            trafficConditions:
-              route.travelAdvisory?.trafficConditions || "normal",
-          };
-        }
+        return await this.enhanceRouteWithTraffic(optimizedTasks);
+      } else {
+        return this.createBasicRoute(optimizedTasks);
       }
-
-      // Fallback: return tasks in original order
-      return {
-        waypoints: waypoints.map((wp, index) => ({ ...wp, sequence: index })),
-        totalDistance: 0,
-        estimatedDuration: 0,
-        trafficConditions: "unknown",
-      };
     } catch (error) {
       console.error("Route optimization error:", error);
-      // Fallback: return tasks in original order
-      return {
-        waypoints: waypoints.map((wp, index) => ({ ...wp, sequence: index })),
-        totalDistance: 0,
-        estimatedDuration: 0,
-        trafficConditions: "unknown",
-      };
+      return this.createBasicRoute(tasks);
     }
   }
 
-  async getRealTimeRoute(origin, destination) {
-    try {
-      if (!this.useRealTimeTraffic) {
-        return await this.getBasicRoute(origin, destination);
+  // SIMPLE task sequence optimization (Nearest Neighbor)
+  optimizeTaskSequence(tasks) {
+    if (tasks.length <= 1) return tasks;
+
+    const optimized = [tasks[0]];
+    const remaining = [...tasks.slice(1)];
+    let currentLocation = tasks[0].pickupLocation;
+
+    while (remaining.length > 0) {
+      let nearestIndex = 0;
+      let nearestDistance = Infinity;
+
+      for (let i = 0; i < remaining.length; i++) {
+        const distance = this.calculateSimpleDistance(
+          currentLocation,
+          remaining[i].pickupLocation
+        );
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = i;
+        }
       }
 
-      const response = await axios.get(
-        `https://maps.googleapis.com/maps/api/directions/json`,
+      const nearestTask = remaining[nearestIndex];
+      optimized.push(nearestTask);
+      currentLocation = nearestTask.dropoffLocation;
+      remaining.splice(nearestIndex, 1);
+    }
+
+    return optimized;
+  }
+
+  async enhanceRouteWithTraffic(tasks) {
+    try {
+      if (tasks.length === 0) return this.createBasicRoute(tasks);
+
+      const waypoints = tasks.map((task) => ({
+        location: task.pickupLocation,
+        stopover: true,
+      }));
+
+      const response = await axios.post(
+        `https://routes.googleapis.com/directions/v2:computeRoutes`,
         {
-          params: {
-            origin: `${origin.lat},${origin.lng}`,
-            destination: `${destination.lat},${destination.lng}`,
-            key: this.googleMapsKey,
-            alternatives: false,
-            traffic_model: "best_guess",
-            departure_time: "now",
+          origin: waypoints[0].location,
+          destination: waypoints[waypoints.length - 1].location,
+          intermediates: waypoints.slice(1, -1),
+          travelMode: "DRIVE",
+          optimizeWaypointOrder: true,
+          routingPreference: "TRAFFIC_AWARE",
+        },
+        {
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": this.googleMapsKey,
+            "X-Goog-FieldMask":
+              "routes.optimizedIntermediateWaypointIndex,routes.duration,routes.distanceMeters,routes.polyline",
           },
+          timeout: 10000,
         }
       );
 
       if (response.data.routes && response.data.routes.length > 0) {
         const route = response.data.routes[0];
         return {
-          polyline: route.overview_polyline?.points,
-          totalDistance: route.legs[0]?.distance?.value || 0,
-          estimatedDuration: route.legs[0]?.duration?.value || 0,
-          estimatedDurationInTraffic:
-            route.legs[0]?.duration_in_traffic?.value ||
-            route.legs[0]?.duration?.value ||
-            0,
-          trafficConditions: this.analyzeRouteTraffic(route),
-          steps:
-            route.legs[0]?.steps?.map((step) => ({
-              instruction: step.html_instructions,
-              distance: step.distance?.value,
-              duration: step.duration?.value,
-            })) || [],
+          waypoints: this.applyOptimizedOrder(
+            tasks,
+            route.optimizedIntermediateWaypointIndex
+          ),
+          totalDistance: route.distanceMeters,
+          estimatedDuration: route.duration,
+          polyline: route.polyline,
+          optimized: true,
+          trafficAware: true,
         };
       }
-
-      return await this.getBasicRoute(origin, destination);
     } catch (error) {
-      console.error("Real-time route error:", error);
-      return await this.getBasicRoute(origin, destination);
+      console.error("Traffic-enhanced routing failed:", error.message);
     }
+
+    return this.createBasicRoute(tasks);
   }
 
-  async getBasicRoute(origin, destination) {
-    try {
-      const response = await axios.get(
-        `https://maps.googleapis.com/maps/api/directions/json`,
-        {
-          params: {
-            origin: `${origin.lat},${origin.lng}`,
-            destination: `${destination.lat},${destination.lng}`,
-            key: this.googleMapsKey,
-          },
-        }
-      );
+  applyOptimizedOrder(tasks, optimizedOrder) {
+    if (!optimizedOrder || optimizedOrder.length !== tasks.length) {
+      return tasks.map((task, index) => ({ ...task, sequence: index }));
+    }
 
-      if (response.data.routes && response.data.routes.length > 0) {
-        const route = response.data.routes[0];
-        return {
-          polyline: route.overview_polyline?.points,
-          totalDistance: route.legs[0]?.distance?.value || 0,
-          estimatedDuration: route.legs[0]?.duration?.value || 0,
-          trafficConditions: "unknown",
-          steps:
-            route.legs[0]?.steps?.map((step) => ({
-              instruction: step.html_instructions,
-              distance: step.distance?.value,
-              duration: step.duration?.value,
-            })) || [],
-        };
+    return optimizedOrder.map((originalIndex, sequence) => ({
+      ...tasks[originalIndex],
+      sequence: sequence,
+    }));
+  }
+
+  createBasicRoute(tasks) {
+    const totalDistance = tasks.reduce((sum, task) => {
+      if (task.pickupLocation && task.dropoffLocation) {
+        return (
+          sum +
+          this.calculateSimpleDistance(
+            task.pickupLocation,
+            task.dropoffLocation
+          ) *
+            1000
+        );
       }
+      return sum;
+    }, 0);
 
-      return null;
-    } catch (error) {
-      console.error("Basic route error:", error);
-      return null;
-    }
+    const estimatedDuration = (totalDistance / 1000) * 120; // Assume 50km/h average
+
+    return {
+      waypoints: tasks.map((task, index) => ({ ...task, sequence: index })),
+      totalDistance: totalDistance,
+      estimatedDuration: estimatedDuration,
+      polyline: null,
+      optimized: false,
+      trafficAware: false,
+    };
   }
 
-  analyzeRouteTraffic(route) {
-    // Simple traffic analysis based on duration differences
-    const legs = route.legs || [];
-    if (legs.length === 0) return "unknown";
-
-    const leg = legs[0];
-    const normalDuration = leg.duration?.value || 0;
-    const trafficDuration = leg.duration_in_traffic?.value || normalDuration;
-
-    const trafficRatio = trafficDuration / normalDuration;
-
-    if (trafficRatio >= 2.0) return "heavy";
-    if (trafficRatio >= 1.5) return "moderate";
-    if (trafficRatio >= 1.2) return "light";
-    return "smooth";
-  }
-
-  // New method for dynamic route updates
-  async updateRouteForTask(taskId, currentLocation) {
-    try {
-      const task = await LogisticsTask.findById(taskId);
-      if (!task) throw new Error("Task not found");
-
-      const updatedRoute = await this.getRealTimeRoute(
-        currentLocation,
-        task.dropoffLocation
-      );
-
-      if (updatedRoute) {
-        task.optimizedRoute = updatedRoute;
-        await task.save();
-
-        return updatedRoute;
-      }
-
-      return null;
-    } catch (error) {
-      console.error("Route update error:", error);
-      return null;
-    }
+  // Clear cache (useful for testing)
+  clearCache() {
+    this.assignmentCache.clear();
   }
 }
 

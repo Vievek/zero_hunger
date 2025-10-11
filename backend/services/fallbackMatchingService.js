@@ -28,25 +28,39 @@ class FallbackMatchingService {
 
   async findMatches(donation) {
     try {
-      console.log(`Starting fallback matching for donation: ${donation._id}`);
+      console.log(
+        `🔄 Starting fallback matching for donation: ${donation._id}`
+      );
 
       const recipients = await User.find({
         role: "recipient",
         "recipientDetails.verificationStatus": "verified",
+        "recipientDetails.isActive": true,
       }).populate("recipientDetails");
 
       const matches = [];
+      console.log(
+        `🔍 Checking ${recipients.length} recipients for fallback matching`
+      );
 
       for (const recipient of recipients) {
         try {
-          // Check capacity first
+          // FIXED: Enhanced capacity calculation
           const currentLoad = await Donation.countDocuments({
             acceptedBy: recipient._id,
-            status: { $in: ["active", "matched", "scheduled"] },
+            status: { $in: ["active", "matched", "scheduled", "picked_up"] },
           });
 
-          const capacity = recipient.recipientDetails.capacity || 50;
+          const capacity = recipient.recipientDetails?.capacity || 50;
+
+          console.log(
+            `📊 Recipient ${recipient._id} capacity: ${currentLoad}/${capacity}`
+          );
+
           if (currentLoad >= capacity) {
+            console.log(
+              `⛔ Recipient ${recipient._id} at capacity: ${currentLoad}/${capacity}`
+            );
             continue;
           }
 
@@ -68,14 +82,37 @@ class FallbackMatchingService {
             donation,
             recipient
           );
+          const preferenceScore = this.calculatePreferenceScore(
+            donation,
+            recipient
+          );
 
           // Combined score with weights
           const totalScore =
-            keywordScore * 0.3 +
+            keywordScore * 0.25 +
             proximityScore * 0.25 +
             dietaryScore * 0.2 +
             capacityScore * 0.15 +
-            organizationScore * 0.1;
+            organizationScore * 0.1 +
+            preferenceScore * 0.05;
+
+          console.log(
+            `📊 Fallback scores for ${
+              recipient._id
+            }: keyword=${keywordScore.toFixed(
+              2
+            )}, proximity=${proximityScore.toFixed(
+              2
+            )}, dietary=${dietaryScore.toFixed(
+              2
+            )}, capacity=${capacityScore.toFixed(
+              2
+            )}, org=${organizationScore.toFixed(
+              2
+            )}, preference=${preferenceScore.toFixed(
+              2
+            )}, total=${totalScore.toFixed(2)}`
+          );
 
           if (totalScore > 0.3) {
             // Minimum threshold
@@ -86,6 +123,7 @@ class FallbackMatchingService {
               dietaryScore,
               capacityScore,
               organizationScore,
+              preferenceScore,
               totalScore,
               currentLoad,
               capacity,
@@ -94,7 +132,7 @@ class FallbackMatchingService {
           }
         } catch (recipientError) {
           console.error(
-            `Error processing recipient ${recipient._id}:`,
+            `❌ Error processing recipient ${recipient._id}:`,
             recipientError
           );
           continue;
@@ -102,11 +140,11 @@ class FallbackMatchingService {
       }
 
       console.log(
-        `Fallback matching found ${matches.length} potential matches for donation ${donation._id}`
+        `✅ Fallback matching found ${matches.length} potential matches for donation ${donation._id}`
       );
       return matches;
     } catch (error) {
-      console.error("Fallback matching error:", error);
+      console.error("❌ Fallback matching error:", error);
       return []; // Return empty array instead of throwing
     }
   }
@@ -135,8 +173,12 @@ class FallbackMatchingService {
 
     // Score based on dietary compatibility (inverse - avoid mismatches)
     for (const restriction of recipientRestrictions) {
-      if (this.hasDietaryConflict(donationTags, restriction)) {
+      if (
+        this.hasDietaryConflict(donationTags, restriction) ||
+        this.hasDietaryConflict(donationCategories, restriction)
+      ) {
         score *= 0.1; // Severe penalty for dietary conflicts
+        console.log(`⚠️ Dietary conflict in fallback: ${restriction}`);
       }
     }
 
@@ -150,7 +192,25 @@ class FallbackMatchingService {
     return Math.min(1.0, normalizedScore + keywordBoost);
   }
 
-  hasDietaryConflict(donationTags, restriction) {
+  // NEW: Calculate preference score
+  calculatePreferenceScore(donation, recipient) {
+    const preferredFoodTypes =
+      recipient.recipientDetails?.preferredFoodTypes || [];
+    const donationCategories = donation.categories || [];
+
+    if (preferredFoodTypes.length === 0) return 0.5;
+
+    let matchCount = 0;
+    donationCategories.forEach((category) => {
+      if (preferredFoodTypes.includes(category)) {
+        matchCount++;
+      }
+    });
+
+    return matchCount / Math.max(donationCategories.length, 1);
+  }
+
+  hasDietaryConflict(items, restriction) {
     const conflictMap = {
       vegetarian: ["meat", "poultry", "seafood", "fish"],
       vegan: ["meat", "poultry", "seafood", "fish", "dairy", "eggs", "honey"],
@@ -163,9 +223,7 @@ class FallbackMatchingService {
 
     const conflicts = conflictMap[restriction] || [];
     return conflicts.some((conflict) =>
-      donationTags.some((tag) =>
-        tag.toLowerCase().includes(conflict.toLowerCase())
-      )
+      items.some((item) => item.toLowerCase().includes(conflict.toLowerCase()))
     );
   }
 
@@ -178,14 +236,13 @@ class FallbackMatchingService {
         return 0.5; // Default score if locations not available
       }
 
-      // Calculate simple distance (in production, use proper geospatial queries)
+      // Calculate simple distance
       const distance = this.calculateSimpleDistance(
         donationLocation,
         recipientLocation
       );
 
       // Convert to proximity score (closer = higher score)
-      // Assuming coordinates are in degrees, this is a simplified approach
       const maxDistance = 0.5; // ~55km in degrees
       const proximity = Math.max(0, 1 - distance / maxDistance);
 
@@ -203,7 +260,6 @@ class FallbackMatchingService {
 
   calculateSimpleDistance(loc1, loc2) {
     // Simple Euclidean distance (in degrees)
-    // In production, use Haversine formula for real distances
     return Math.sqrt(
       Math.pow(loc1.lat - loc2.lat, 2) + Math.pow(loc1.lng - loc2.lng, 2)
     );
@@ -230,10 +286,14 @@ class FallbackMatchingService {
     }
 
     // Check for positive matches (if recipient has preferred diets)
-    const preferredDiets = recipient.recipientDetails?.preferredDiets || [];
-    for (const diet of preferredDiets) {
-      if (donationTags.includes(diet) || donationCategories.includes(diet)) {
-        compatibility *= 1.2; // Small boost for preferred diets
+    const preferredFoodTypes =
+      recipient.recipientDetails?.preferredFoodTypes || [];
+    for (const foodType of preferredFoodTypes) {
+      if (
+        donationTags.includes(foodType) ||
+        donationCategories.includes(foodType)
+      ) {
+        compatibility *= 1.2; // Small boost for preferred food types
       }
     }
 
@@ -245,8 +305,9 @@ class FallbackMatchingService {
 
     const utilization = currentLoad / capacity;
 
-    // Prefer recipients with lower utilization (more capacity)
+    // Enhanced capacity scoring
     if (utilization >= 1.0) return 0.0; // No capacity
+    if (utilization >= 0.9) return 0.1; // Almost full
     if (utilization >= 0.8) return 0.2; // Very limited capacity
     if (utilization >= 0.6) return 0.4; // Limited capacity
     if (utilization >= 0.4) return 0.6; // Moderate capacity
@@ -312,8 +373,9 @@ class FallbackMatchingService {
         totalScore:
           match.proximityScore * 0.4 +
           match.capacityScore * 0.3 +
-          match.keywordScore * 0.2 +
-          match.dietaryScore * 0.1,
+          match.keywordScore * 0.15 +
+          match.dietaryScore * 0.1 +
+          match.organizationScore * 0.05,
       }))
       .sort((a, b) => b.totalScore - a.totalScore);
   }
@@ -328,9 +390,10 @@ class FallbackMatchingService {
         // Recalculate score with capacity focus
         totalScore:
           match.capacityScore * 0.4 +
-          match.keywordScore * 0.25 +
-          match.proximityScore * 0.2 +
-          match.organizationScore * 0.15,
+          match.keywordScore * 0.2 +
+          match.proximityScore * 0.15 +
+          match.organizationScore * 0.15 +
+          match.dietaryScore * 0.1,
       }))
       .sort((a, b) => b.totalScore - a.totalScore);
   }
@@ -347,12 +410,14 @@ class FallbackMatchingService {
         dietary: scores.dietaryScore,
         capacity: scores.capacityScore,
         organization: scores.organizationScore,
+        preference: scores.preferenceScore,
         total: scores.totalScore,
       },
       factors: {
         categories: donation.categories,
         tags: donation.tags,
         recipientRestrictions: recipient.recipientDetails?.dietaryRestrictions,
+        recipientPreferences: recipient.recipientDetails?.preferredFoodTypes,
         currentLoad: scores.currentLoad,
         capacity: scores.capacity,
         organizationType: recipient.recipientDetails?.organizationType,
