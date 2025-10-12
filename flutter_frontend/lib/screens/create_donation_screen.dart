@@ -7,6 +7,8 @@ import 'package:geolocator/geolocator.dart';
 import 'dart:io';
 import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
+import '../widgets/google_map_location_picker.dart';
+import '../config/google_maps_config.dart';
 
 class CreateDonationScreen extends StatefulWidget {
   const CreateDonationScreen({super.key});
@@ -34,12 +36,9 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   DateTime? _scheduledPickup;
   bool _isSubmitting = false;
   bool _isAnalyzingImages = false;
-  bool _isGettingLocation = false;
 
-  // Map variables
+  // Location variable
   LatLng? _selectedLocation;
-  GoogleMapController? _mapController;
-  final Set<Marker> _markers = {};
 
   final List<String> _availableCategories = [
     'prepared-meal',
@@ -78,15 +77,10 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     _unitController.dispose();
     _addressController.dispose();
     _expectedQuantityController.dispose();
-    _mapController?.dispose();
     super.dispose();
   }
 
   Future<void> _getCurrentLocation() async {
-    setState(() {
-      _isGettingLocation = true;
-    });
-
     try {
       bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
@@ -111,7 +105,6 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
 
       setState(() {
         _selectedLocation = LatLng(position.latitude, position.longitude);
-        _addMarker(_selectedLocation!);
       });
 
       // Get address from coordinates
@@ -121,12 +114,6 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to get location: $e')),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isGettingLocation = false;
-        });
       }
     }
   }
@@ -154,96 +141,6 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     } catch (e) {
       debugPrint('Geocoding error: $e');
     }
-  }
-
-  Future<void> _searchLocationWithGooglePlaces() async {
-    try {
-      // Show a simple text search dialog for now
-      final String? searchQuery = await showDialog<String>(
-        context: context,
-        builder: (context) => _LocationSearchDialog(),
-      );
-
-      if (searchQuery != null && searchQuery.isNotEmpty) {
-        await _geocodeLocation(searchQuery);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to search location: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _geocodeLocation(String address) async {
-    try {
-      List<Location> locations =
-          await locationFromAddress('$address, Sri Lanka');
-
-      if (locations.isNotEmpty) {
-        final Location location = locations.first;
-        final LatLng newLocation =
-            LatLng(location.latitude, location.longitude);
-
-        setState(() {
-          _selectedLocation = newLocation;
-          _addressController.text = address;
-          _addMarker(newLocation);
-        });
-
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(newLocation, 15),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to find location: $e')),
-        );
-      }
-    }
-  }
-
-  Future<void> _searchLocation(String query) async {
-    if (query.isEmpty) return;
-
-    try {
-      List<Location> locations = await locationFromAddress(query);
-      if (locations.isNotEmpty) {
-        Location location = locations.first;
-        LatLng newLocation = LatLng(location.latitude, location.longitude);
-
-        setState(() {
-          _selectedLocation = newLocation;
-          _addMarker(newLocation);
-        });
-
-        _mapController?.animateCamera(
-          CameraUpdate.newLatLngZoom(newLocation, 15),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Location not found: $e')),
-        );
-      }
-    }
-  }
-
-  void _addMarker(LatLng position) {
-    setState(() {
-      _markers.clear();
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('selected_location'),
-          position: position,
-          infoWindow: const InfoWindow(title: 'Pickup Location'),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        ),
-      );
-    });
   }
 
   Future<void> _analyzeImages() async {
@@ -351,12 +248,18 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     if (_donationType == 'bulk')
                       _buildExpectedQuantitySection(),
 
-                    // Location
-                    _buildLocationSection(),
-                    const SizedBox(height: 20),
-
-                    // Map
-                    _buildMapSection(),
+                    // Enhanced Google Map Location Picker
+                    GoogleMapLocationPicker(
+                      initialAddress: _addressController.text,
+                      initialLocation: _selectedLocation,
+                      googleApiKey: GoogleMapsConfig.googleMapsApiKey,
+                      onLocationSelected: (LatLng location, String address) {
+                        setState(() {
+                          _selectedLocation = location;
+                          _addressController.text = address;
+                        });
+                      },
+                    ),
                     const SizedBox(height: 20),
 
                     // Scheduled Pickup (for bulk)
@@ -725,127 +628,6 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     );
   }
 
-  Widget _buildLocationSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Pickup Location *',
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextFormField(
-                controller: _addressController,
-                decoration: InputDecoration(
-                  labelText: 'Search or enter address',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: IconButton(
-                    icon: const Icon(Icons.place),
-                    onPressed: _searchLocationWithGooglePlaces,
-                    tooltip: 'Search with Google Places',
-                  ),
-                ),
-                onChanged: (value) {
-                  if (value.length > 3) {
-                    _searchLocation(value);
-                  }
-                },
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter or select a pickup location';
-                  }
-                  return null;
-                },
-              ),
-            ),
-            const SizedBox(width: 8),
-            IconButton(
-              icon: Icon(
-                Icons.my_location,
-                color: _isGettingLocation
-                    ? Colors.grey
-                    : Theme.of(context).primaryColor,
-              ),
-              onPressed: _isGettingLocation ? null : _getCurrentLocation,
-              tooltip: 'Use current location',
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _searchLocationWithGooglePlaces,
-                icon: const Icon(Icons.search_outlined),
-                label: const Text('Search Places'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: OutlinedButton.icon(
-                onPressed: _isGettingLocation ? null : _getCurrentLocation,
-                icon: _isGettingLocation
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.gps_fixed),
-                label: Text(
-                    _isGettingLocation ? 'Getting...' : 'Current Location'),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildMapSection() {
-    return SizedBox(
-      height: 200,
-      child: _isGettingLocation
-          ? const Center(child: CircularProgressIndicator())
-          : _selectedLocation == null
-              ? const Center(child: Text('Select a location to view map'))
-              : ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: GoogleMap(
-                    onMapCreated: (controller) {
-                      setState(() {
-                        _mapController = controller;
-                      });
-                    },
-                    initialCameraPosition: CameraPosition(
-                      target: _selectedLocation!,
-                      zoom: 15,
-                    ),
-                    markers: _markers,
-                    onTap: (LatLng position) {
-                      setState(() {
-                        _selectedLocation = position;
-                        _addMarker(position);
-                      });
-                      _getAddressFromLatLng(position);
-                    },
-                    myLocationEnabled: true,
-                    myLocationButtonEnabled: false,
-                  ),
-                ),
-    );
-  }
-
   Widget _buildScheduledPickupSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1155,65 +937,5 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
         });
       }
     }
-  }
-}
-
-class _LocationSearchDialog extends StatefulWidget {
-  @override
-  _LocationSearchDialogState createState() => _LocationSearchDialogState();
-}
-
-class _LocationSearchDialogState extends State<_LocationSearchDialog> {
-  final TextEditingController _searchController = TextEditingController();
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Search Location'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: _searchController,
-            decoration: const InputDecoration(
-              hintText: 'Enter location name or address...',
-              prefixIcon: Icon(Icons.search),
-              border: OutlineInputBorder(),
-            ),
-            autofocus: true,
-            onSubmitted: (value) {
-              if (value.isNotEmpty) {
-                Navigator.of(context).pop(value);
-              }
-            },
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Search will be limited to Sri Lanka',
-            style: TextStyle(fontSize: 12, color: Colors.grey),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () {
-            if (_searchController.text.isNotEmpty) {
-              Navigator.of(context).pop(_searchController.text);
-            }
-          },
-          child: const Text('Search'),
-        ),
-      ],
-    );
   }
 }

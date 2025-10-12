@@ -26,6 +26,7 @@ dependencies:
   pull_to_refresh: ^2.0.0
   connectivity_plus: ^5.0.1
   geocoding: ^2.1.1
+  google_places_flutter: ^2.0.9
   file_picker: ^10.3.3
   http_parser: ^4.0.2
   permission_handler: ^11.0.1
