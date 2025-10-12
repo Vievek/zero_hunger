@@ -100,8 +100,8 @@ class _SignupScreenState extends State<SignupScreen> {
           'registrationNumber': _registrationNumberController.text,
           'foodTypes': _selectedFoodTypes,
         };
-    case 'recipient':
-        // Create contactInfo map first with explicit type
+case 'recipient':
+        // Create contactInfo map first
         final Map<String, dynamic> contactInfo = {
           'phone': _phoneController.text,
           'address': _addressController.text,
@@ -757,6 +757,7 @@ class _SignupScreenState extends State<SignupScreen> {
             _selectedRole == 'recipient' ? _getRoleSpecificDetails() : null,
         volunteerDetails:
             _selectedRole == 'volunteer' ? _getRoleSpecificDetails() : null,
+        
       );
 
       // Navigate to dashboard after successful registration

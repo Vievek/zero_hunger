@@ -55,7 +55,7 @@ class _LaunchScreenState extends State<LaunchScreen> {
           children: [
             // Your logo from assets
             Image.asset(
-              'assets/images/logo.png', // Make sure this path matches your actual asset path
+              'assets/images/Logo.png', // Make sure this path matches your actual asset path
               width: 150, // Adjust size as needed
               height: 150,
               fit: BoxFit.contain,

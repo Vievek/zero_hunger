@@ -61,6 +61,11 @@ exports.register = async (req, res) => {
       profileCompleted: true,
     };
 
+    // ✅ ADD THIS: Include location in contactInfo if provided in recipientDetails
+    if (role === "recipient" && recipientDetails?.contactInfo?.location) {
+      userData.contactInfo.location = recipientDetails.contactInfo.location;
+    }
+
     // Add role-specific details with proper validation
     if (role === "donor") {
       if (!donorDetails?.businessName) {
@@ -84,6 +89,7 @@ exports.register = async (req, res) => {
           message: "Organization name is required for recipients",
         });
       }
+
       userData.recipientDetails = {
         organizationName: recipientDetails.organizationName,
         organizationType: recipientDetails.organizationType || "other",
@@ -95,6 +101,16 @@ exports.register = async (req, res) => {
         isActive: true,
         currentLoad: 0,
       };
+
+      // ✅ ADD THIS: Include location if provided
+      if (recipientDetails.location) {
+        userData.recipientDetails.location = recipientDetails.location;
+      }
+
+      // ✅ ALSO ADD: Include contactInfo location
+      if (recipientDetails.contactInfo?.location) {
+        userData.contactInfo.location = recipientDetails.contactInfo.location;
+      }
     } else if (role === "volunteer") {
       userData.volunteerDetails = {
         vehicleType: volunteerDetails?.vehicleType || "none",
