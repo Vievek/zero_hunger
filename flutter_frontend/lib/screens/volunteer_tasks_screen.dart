@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../providers/logistics_provider.dart';
 import '../models/logistics_model.dart';
 import '../services/location_service.dart';
@@ -558,11 +559,69 @@ class _VolunteerTasksScreenState extends State<VolunteerTasksScreen> {
     }
   }
 
-  void _openInMaps(LogisticsTask task) {
-    // This would open the route in the device's maps app
-    // Implementation depends on the maps integration you're using
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Opening in maps...')),
-    );
+  Future<void> _openInMaps(LogisticsTask task) async {
+    try {
+      // Get pickup and dropoff coordinates
+      final pickupLat = task.pickupLocation['lat']?.toString() ?? '0';
+      final pickupLng = task.pickupLocation['lng']?.toString() ?? '0';
+      final dropoffLat = task.dropoffLocation['lat']?.toString() ?? '0';
+      final dropoffLng = task.dropoffLocation['lng']?.toString() ?? '0';
+
+      // Get addresses for fallback
+      final pickupAddress = task.pickupLocation['address'] ?? '';
+      final dropoffAddress = task.dropoffLocation['address'] ?? '';
+
+      // Create Google Maps URL with route from pickup to dropoff
+      final String googleMapsUrl =
+          'https://www.google.com/maps/dir/$pickupLat,$pickupLng/$dropoffLat,$dropoffLng';
+
+      // Alternative URL using addresses as fallback
+      final String googleMapsUrlFallback =
+          'https://www.google.com/maps/dir/${Uri.encodeComponent(pickupAddress)}/${Uri.encodeComponent(dropoffAddress)}';
+
+      Uri mapsUri = Uri.parse(googleMapsUrl);
+
+      // Try to launch Google Maps first
+      if (await canLaunchUrl(mapsUri)) {
+        await launchUrl(mapsUri, mode: LaunchMode.externalApplication);
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Opening route in Google Maps...'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } else {
+        // Fallback to address-based URL
+        Uri fallbackUri = Uri.parse(googleMapsUrlFallback);
+        if (await canLaunchUrl(fallbackUri)) {
+          await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Opening route in Google Maps...'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          throw Exception('Could not launch Google Maps');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error opening maps: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to open maps: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 }
