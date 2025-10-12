@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:google_maps_flutter/google_maps_flutter.dart';
 import '../providers/auth_provider.dart';
+import '../widgets/google_map_location_picker.dart';
+import '../config/google_maps_config.dart';
 import 'dashboard_screen.dart';
 
 class SignupScreen extends StatefulWidget {
@@ -39,11 +42,20 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _volunteerCapacityController =
       TextEditingController();
 
+  // Recipient-specific controllers
+  final TextEditingController _operatingHoursStartController =
+      TextEditingController();
+  final TextEditingController _operatingHoursEndController =
+      TextEditingController();
+
   String? _selectedVehicleType;
   String? _selectedOrgType;
   final List<String> _selectedFoodTypes = [];
   final List<String> _selectedDietaryRestrictions = [];
   final List<String> _selectedPreferredFoodTypes = [];
+
+  // Location variable - REMOVED unused _locationAddress
+  LatLng? _selectedLocation;
 
   late String _selectedRole;
   bool _saveLogin = true;
@@ -71,6 +83,8 @@ class _SignupScreenState extends State<SignupScreen> {
     _contactNumberController.dispose();
     _maxDistanceController.dispose();
     _volunteerCapacityController.dispose();
+    _operatingHoursStartController.dispose();
+    _operatingHoursEndController.dispose();
     super.dispose();
   }
 
@@ -87,14 +101,35 @@ class _SignupScreenState extends State<SignupScreen> {
           'foodTypes': _selectedFoodTypes,
         };
       case 'recipient':
-        return {
+        final recipientDetails = {
           'organizationName': _orgNameController.text,
           'organizationType': _selectedOrgType ?? 'other',
           'address': _addressController.text,
           'capacity': int.tryParse(_capacityController.text) ?? 50,
           'dietaryRestrictions': _selectedDietaryRestrictions,
           'preferredFoodTypes': _selectedPreferredFoodTypes,
+          'currentLoad': 0,
+          'isActive': true,
         };
+
+        // Add location if available
+        if (_selectedLocation != null) {
+          recipientDetails['location'] = {
+            'lat': _selectedLocation!.latitude,
+            'lng': _selectedLocation!.longitude,
+          };
+        }
+
+        // Add operating hours if provided
+        if (_operatingHoursStartController.text.isNotEmpty &&
+            _operatingHoursEndController.text.isNotEmpty) {
+          recipientDetails['operatingHours'] = {
+            'start': _operatingHoursStartController.text,
+            'end': _operatingHoursEndController.text,
+          };
+        }
+
+        return recipientDetails;
       case 'volunteer':
         return {
           'vehicleType': _selectedVehicleType,
@@ -103,7 +138,15 @@ class _SignupScreenState extends State<SignupScreen> {
               : _phoneController.text,
           'maxDistance': int.tryParse(_maxDistanceController.text) ?? 20,
           'capacity': int.tryParse(_volunteerCapacityController.text) ?? 10,
-          'availability': [], // Can be added later in profile completion
+          'availability': [],
+          'isAvailable': true,
+          'currentTasks': 0,
+          'volunteerMetrics': {
+            'completedDeliveries': 0,
+            'totalDistance': 0,
+            'averageRating': 0,
+            'reliabilityScore': 100,
+          },
         };
       default:
         return null;
@@ -163,8 +206,6 @@ class _SignupScreenState extends State<SignupScreen> {
                 prefixIcon: Icon(Icons.assignment),
               ),
             ),
-            const SizedBox(height: 16),
-            // Food types multi-select would go here
           ],
         );
       case 'recipient':
@@ -186,6 +227,7 @@ class _SignupScreenState extends State<SignupScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
+              // FIXED: Use initialValue instead of value
               initialValue: _selectedOrgType,
               decoration: const InputDecoration(
                 labelText: 'Organization Type *',
@@ -235,12 +277,69 @@ class _SignupScreenState extends State<SignupScreen> {
               },
             ),
             const SizedBox(height: 16),
+
+            // Enhanced Google Map Location Picker for Recipient
+            GoogleMapLocationPicker(
+              initialAddress: _addressController.text,
+              initialLocation: _selectedLocation,
+              googleApiKey: GoogleMapsConfig.googleMapsApiKey,
+              onLocationSelected: (LatLng location, String address) {
+                setState(() {
+                  _selectedLocation = location;
+                  // Auto-fill address field if empty
+                  if (_addressController.text.isEmpty) {
+                    _addressController.text = address;
+                  }
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+
+            // Operating Hours Section
+            const Text(
+              'Operating Hours (Optional)',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _operatingHoursStartController,
+                    decoration: const InputDecoration(
+                      labelText: 'Start Time',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.access_time),
+                      hintText: '09:00',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    controller: _operatingHoursEndController,
+                    decoration: const InputDecoration(
+                      labelText: 'End Time',
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.access_time),
+                      hintText: '17:00',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Format: HH:MM (24-hour format)',
+              style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
           ],
         );
       case 'volunteer':
         return Column(
           children: [
             DropdownButtonFormField<String>(
+              // FIXED: Use initialValue instead of value
               initialValue: _selectedVehicleType,
               decoration: const InputDecoration(
                 labelText: 'Vehicle Type *',
@@ -405,7 +504,7 @@ class _SignupScreenState extends State<SignupScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Role Display - FIXED: Using read-only TextFormField correctly
+                // Role Display
                 TextFormField(
                   controller:
                       TextEditingController(text: _selectedRole.toUpperCase()),
@@ -509,6 +608,18 @@ class _SignupScreenState extends State<SignupScreen> {
       return;
     }
 
+    // Additional validation for recipient location
+    if (_selectedRole == 'recipient' && _selectedLocation == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+              content:
+                  Text('Please select your organization location on the map')),
+        );
+      }
+      return;
+    }
+
     try {
       await Provider.of<AuthProvider>(context, listen: false).register(
         name: _nameController.text,
@@ -537,6 +648,11 @@ class _SignupScreenState extends State<SignupScreen> {
       debugPrint('register call finished');
     } catch (e) {
       debugPrint('register failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Registration failed: $e')),
+        );
+      }
     }
   }
 }
