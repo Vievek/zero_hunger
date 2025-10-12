@@ -289,20 +289,39 @@ class AuthProvider with ChangeNotifier {
     }
   }
 
-  // Logout
+// In AuthProvider class - Update the logout method
   Future<void> logout() async {
     try {
-      await _googleAuthService.signOut();
-      await _storageService.clearAuthData();
-      await _tokenManager.clearToken();
+      // Clear all services in parallel
+      await Future.wait([
+        _googleAuthService.signOut(),
+        _storageService.clearAuthData(),
+        _tokenManager.clearToken(),
+      ], eagerError: true);
+
+      // Reset all auth state
+      _resetAuthState();
+
+      if (kDebugMode) {
+        print('🔄 LOGOUT - All auth data cleared successfully');
+      }
     } catch (error) {
       if (kDebugMode) {
         print('Logout error: $error');
       }
-    } finally {
+      // Even if there's an error, reset the local state
       _resetAuthState();
+    } finally {
       notifyListeners();
     }
+  }
+
+// Ensure _resetAuthState completely clears everything
+  void _resetAuthState() {
+    _user = null;
+    _isAuthenticated = false;
+    _isLoading = false;
+    _error = null;
   }
 
   // Refresh user data
@@ -344,11 +363,6 @@ class AuthProvider with ChangeNotifier {
   }
 
   // Helper methods
-  void _resetAuthState() {
-    _user = null;
-    _isAuthenticated = false;
-    _error = null;
-  }
 
   void clearError() {
     _error = null;

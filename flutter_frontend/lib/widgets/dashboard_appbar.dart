@@ -7,20 +7,20 @@ import '../screens/welcome_screen.dart';
 class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
   final String title;
   final List<Widget>? actions;
-  final PreferredSizeWidget? bottom; // Add this line
+  final PreferredSizeWidget? bottom;
 
   const DashboardAppBar({
     super.key,
     required this.title,
     this.actions,
-    this.bottom, // Add this parameter
+    this.bottom,
   });
 
   @override
   Widget build(BuildContext context) {
     return AppBar(
       title: Text(title),
-      bottom: bottom, // Pass it to the AppBar
+      bottom: bottom,
       actions: [
         // Custom actions passed from screen
         ...?actions,
@@ -58,25 +58,56 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   /// Perform logout and navigate to welcome screen
   Future<void> _performLogout(BuildContext context) async {
-    Navigator.pop(context); // Close dialog
+    final navigator = Navigator.of(context);
+    final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+    // Close dialog immediately
+    navigator.pop();
 
     try {
+      // Show loading indicator
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              CircularProgressIndicator.adaptive(strokeWidth: 2),
+              SizedBox(width: 12),
+              Text('Logging out...'),
+            ],
+          ),
+          duration: Duration(seconds: 5),
+        ),
+      );
+
+      // Perform logout
       await Provider.of<AuthProvider>(context, listen: false).logout();
 
+      // Clear any existing snacks
+      scaffoldMessenger.hideCurrentSnackBar();
+
+      // Use pushAndRemoveUntil with a more specific condition
+      navigator.pushAndRemoveUntil(
+        MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+        (route) => false, // Remove all routes
+      );
+    } catch (error) {
+      // Clear loading snack
+      scaffoldMessenger.hideCurrentSnackBar();
+
+      // Show error
+      scaffoldMessenger.showSnackBar(
+        SnackBar(
+          content: Text('Logout failed: $error'),
+          backgroundColor: Colors.red,
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      // Even on error, try to navigate to welcome screen
       if (context.mounted) {
-        Navigator.pushAndRemoveUntil(
-          context,
+        navigator.pushAndRemoveUntil(
           MaterialPageRoute(builder: (context) => const WelcomeScreen()),
           (route) => false,
-        );
-      }
-    } catch (error) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Logout failed: $error'),
-            backgroundColor: Colors.red,
-          ),
         );
       }
     }
@@ -84,7 +115,6 @@ class DashboardAppBar extends StatelessWidget implements PreferredSizeWidget {
 
   @override
   Size get preferredSize {
-    // Adjust preferred size if bottom widget is present
     if (bottom != null) {
       return Size.fromHeight(kToolbarHeight + bottom!.preferredSize.height);
     }
