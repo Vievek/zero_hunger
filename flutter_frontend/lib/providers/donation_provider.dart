@@ -108,9 +108,36 @@ class DonationProvider with ChangeNotifier {
       notifyListeners();
 
       final response = await _apiService.getMyDonations();
-      _donations = (response['data']['donations'] as List)
-          .map((item) => Donation.fromJson(item))
-          .toList();
+
+      // Debug the response structure
+      debugPrint('📦 Raw API Response: ${response.toString()}');
+
+      // Check if response has the expected structure
+      if (response['success'] == true) {
+        final data = response['data'];
+
+        // Handle both possible response structures
+        if (data['donations'] != null) {
+          // New structure: data has 'donations' and 'stats'
+          _donations = (data['donations'] as List)
+              .map((item) => Donation.fromJson(item))
+              .toList();
+
+          // Also update stats if available
+          if (data['stats'] != null) {
+            _donationStats = Map<String, dynamic>.from(data['stats']);
+          }
+        } else if (data is List) {
+          // Fallback: data is directly the donations list
+          _donations = data.map((item) => Donation.fromJson(item)).toList();
+        } else {
+          throw Exception('Unexpected response format');
+        }
+
+        debugPrint('✅ Loaded ${_donations.length} donations');
+      } else {
+        throw Exception(response['message'] ?? 'Failed to fetch donations');
+      }
 
       _updateProcessingStatus();
       _isLoading = false;
@@ -118,6 +145,7 @@ class DonationProvider with ChangeNotifier {
     } catch (error) {
       _isLoading = false;
       _error = error.toString();
+      debugPrint('❌ Error fetching donations: $error');
       notifyListeners();
       rethrow;
     }

@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 class Donation {
   final String? id;
   final String donorId;
@@ -19,7 +21,8 @@ class Donation {
   final List<MatchedRecipient> matchedRecipients;
   final String? acceptedBy;
   final Map<String, dynamic>? acceptedByUser;
-  final String? assignedVolunteer;
+  final dynamic
+      assignedVolunteer; // Changed to dynamic to handle both String and Map
   final String? urgency;
   final DateTime createdAt;
 
@@ -50,41 +53,51 @@ class Donation {
   });
 
   factory Donation.fromJson(Map<String, dynamic> json) {
-    return Donation(
-      id: json['_id'],
-      donorId: _parseDonorId(json['donor']),
-      donor: _parseDonorObject(json['donor']),
-      type: json['type'] ?? 'normal',
-      status: json['status'] ?? 'pending',
-      images: List<String>.from(json['images'] ?? []),
-      description: json['description'],
-      aiDescription: json['aiDescription'],
-      categories: List<String>.from(json['categories'] ?? []),
-      tags: List<String>.from(json['tags'] ?? []),
-      quantity: Map<String, dynamic>.from(json['quantity'] ?? {}),
-      handlingWindow: json['handlingWindow'] != null
-          ? Map<String, dynamic>.from(json['handlingWindow'])
-          : null,
-      expectedQuantity: json['expectedQuantity'],
-      scheduledPickup: json['scheduledPickup'] != null
-          ? DateTime.parse(json['scheduledPickup'])
-          : null,
-      pickupAddress: json['pickupAddress'] ?? '',
-      location: Map<String, dynamic>.from(json['location'] ?? {}),
-      aiAnalysis: json['aiAnalysis'] != null
-          ? Map<String, dynamic>.from(json['aiAnalysis'])
-          : null,
-      matchedRecipients:
-          _parseMatchedRecipients(json['matchedRecipients'] ?? []),
-      acceptedBy: json['acceptedBy'] is String ? json['acceptedBy'] : null,
-      acceptedByUser: json['acceptedBy'] is Map
-          ? Map<String, dynamic>.from(json['acceptedBy'])
-          : null,
-      assignedVolunteer: json['assignedVolunteer'],
-      urgency: json['urgency'],
-      createdAt:
-          DateTime.parse(json['createdAt'] ?? DateTime.now().toIso8601String()),
-    );
+    // Debug the incoming JSON
+    if (kDebugMode) {
+      print('🔄 Parsing donation: ${json['_id']}');
+    }
+
+    try {
+      return Donation(
+        id: json['_id'] ?? json['id'],
+        donorId: _parseDonorId(json['donor']),
+        donor: _parseDonorObject(json['donor']),
+        type: json['type'] ?? 'normal',
+        status: json['status'] ?? 'pending',
+        images: List<String>.from(json['images'] ?? []),
+        description: json['description'],
+        aiDescription: json['aiDescription'],
+        categories: List<String>.from(json['categories'] ?? []),
+        tags: List<String>.from(json['tags'] ?? []),
+        quantity: Map<String, dynamic>.from(json['quantity'] ?? {}),
+        handlingWindow: json['handlingWindow'] != null
+            ? Map<String, dynamic>.from(json['handlingWindow'])
+            : null,
+        expectedQuantity: json['expectedQuantity'],
+        scheduledPickup: json['scheduledPickup'] != null
+            ? DateTime.tryParse(json['scheduledPickup'])
+            : null,
+        pickupAddress: json['pickupAddress'] ?? '',
+        location: Map<String, dynamic>.from(json['location'] ?? {}),
+        aiAnalysis: json['aiAnalysis'] != null
+            ? Map<String, dynamic>.from(json['aiAnalysis'])
+            : null,
+        matchedRecipients:
+            _parseMatchedRecipients(json['matchedRecipients'] ?? []),
+        acceptedBy: _parseAcceptedBy(json['acceptedBy']),
+        acceptedByUser: _parseAcceptedByUser(json['acceptedBy']),
+        assignedVolunteer: json['assignedVolunteer'], // Store as-is
+        urgency: json['urgency'],
+        createdAt: DateTime.tryParse(json['createdAt'] ?? '') ?? DateTime.now(),
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print('❌ Error parsing donation ${json['_id']}: $e');
+        print('❌ Problematic JSON: $json');
+      }
+      rethrow;
+    }
   }
 
   static String _parseDonorId(dynamic donor) {
@@ -99,6 +112,22 @@ class Donation {
   static Map<String, dynamic>? _parseDonorObject(dynamic donor) {
     if (donor is Map) {
       return Map<String, dynamic>.from(donor);
+    }
+    return null;
+  }
+
+  static String? _parseAcceptedBy(dynamic acceptedBy) {
+    if (acceptedBy == null) return null;
+    if (acceptedBy is String) return acceptedBy;
+    if (acceptedBy is Map) {
+      return acceptedBy['_id']?.toString() ?? acceptedBy['id']?.toString();
+    }
+    return acceptedBy.toString();
+  }
+
+  static Map<String, dynamic>? _parseAcceptedByUser(dynamic acceptedBy) {
+    if (acceptedBy is Map) {
+      return Map<String, dynamic>.from(acceptedBy);
     }
     return null;
   }
@@ -160,7 +189,7 @@ class Donation {
     List<MatchedRecipient>? matchedRecipients,
     String? acceptedBy,
     Map<String, dynamic>? acceptedByUser,
-    String? assignedVolunteer,
+    dynamic assignedVolunteer,
     String? urgency,
     DateTime? createdAt,
   }) {
@@ -200,6 +229,8 @@ class Donation {
   bool get isMatched => status == 'matched';
   bool get isScheduled => status == 'scheduled';
   bool get isDelivered => status == 'delivered';
+  bool get isPickedUp => status == 'picked_up';
+  bool get isCancelled => status == 'cancelled';
 
   String get statusText {
     switch (status) {
@@ -282,6 +313,35 @@ class Donation {
       return null;
     }
   }
+
+  // Get organization name from acceptedByUser
+  String? get acceptedOrganizationName {
+    if (acceptedByUser != null) {
+      return acceptedByUser!['recipientDetails']?['organizationName']
+          ?.toString();
+    }
+    return null;
+  }
+
+  // Get volunteer name from assignedVolunteer
+  String? get volunteerName {
+    if (assignedVolunteer is Map) {
+      return (assignedVolunteer as Map)['name']?.toString();
+    }
+    return null;
+  }
+
+  // Get volunteer ID from assignedVolunteer
+  String? get volunteerId {
+    if (assignedVolunteer is String) {
+      return assignedVolunteer as String;
+    }
+    if (assignedVolunteer is Map) {
+      return assignedVolunteer['_id']?.toString() ??
+          assignedVolunteer['id']?.toString();
+    }
+    return null;
+  }
 }
 
 class MatchedRecipient {
@@ -348,6 +408,16 @@ class MatchedRecipient {
       'matchingMethod': matchingMethod,
       'matchReasons': matchReasons,
     };
+  }
+
+  // Helper to get organization name
+  String? get organizationName {
+    return recipient?['recipientDetails']?['organizationName']?.toString();
+  }
+
+  // Helper to get recipient name
+  String? get recipientName {
+    return recipient?['name']?.toString();
   }
 }
 

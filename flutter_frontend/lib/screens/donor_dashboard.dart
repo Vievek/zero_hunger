@@ -218,6 +218,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
 
   Widget _buildDonationsList(
       List<Donation> donations, DonationProvider provider) {
+        debugPrint('🎯 Building donations list with ${donations.length} items');
     if (donations.isEmpty) {
       return _buildEmptyState();
     }
