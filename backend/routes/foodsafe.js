@@ -27,6 +27,10 @@ try {
   // Get quick reference
   router.get("/quick-reference", foodSafeController.getQuickReference);
 
+  // Cache management endpoints (for debugging)
+  router.post("/clear-cache", foodSafeController.clearAICache);
+  router.get("/cache-stats", foodSafeController.getCacheStats);
+
   console.log("✅ All FoodSafe routes defined");
 } catch (error) {
   console.error("❌ FoodSafe controller load error:", error.message);

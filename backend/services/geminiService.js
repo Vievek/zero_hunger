@@ -1,12 +1,13 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 const axios = require("axios");
+const crypto = require("crypto");
 const cacheManager = require("../utils/cacheManager");
 
 class GeminiAIService {
   constructor() {
     this.genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
     this.model = this.genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
+      model: "gemini-2.0-flash-exp",
       generationConfig: {
         temperature: 0.2,
         topK: 20,
@@ -41,7 +42,13 @@ class GeminiAIService {
   }
 
   async analyzeFoodImages(images) {
-    const cacheKey = `food_analysis_${JSON.stringify(images)}`;
+    // Create a unique cache key using hash of image data
+    const imagesHash = crypto
+      .createHash("sha256")
+      .update(JSON.stringify(images))
+      .digest("hex")
+      .substring(0, 16);
+    const cacheKey = `food_analysis_${imagesHash}`;
     const cached = await cacheManager.get(cacheKey);
     if (cached) return cached;
 
@@ -183,9 +190,18 @@ class GeminiAIService {
   }
 
   async generateFoodSafetyInfo(foodType, question, context = {}) {
-    const cacheKey = `safety_info_${foodType}_${Buffer.from(question)
-      .toString("base64")
-      .substring(0, 50)}`;
+    // Create a unique cache key using full question hash instead of truncated base64
+    const questionHash = crypto
+      .createHash("sha256")
+      .update(question)
+      .digest("hex")
+      .substring(0, 16);
+    const contextHash = crypto
+      .createHash("sha256")
+      .update(JSON.stringify(context))
+      .digest("hex")
+      .substring(0, 8);
+    const cacheKey = `safety_info_${foodType}_${questionHash}_${contextHash}`;
     const cached = await cacheManager.get(cacheKey);
     if (cached) return cached;
 
@@ -344,7 +360,13 @@ class GeminiAIService {
   }
 
   async generateQRCodeContent(donationDetails) {
-    const cacheKey = `qr_content_${JSON.stringify(donationDetails)}`;
+    // Create a unique cache key using hash of donation details
+    const detailsHash = crypto
+      .createHash("sha256")
+      .update(JSON.stringify(donationDetails))
+      .digest("hex")
+      .substring(0, 16);
+    const cacheKey = `qr_content_${detailsHash}`;
     const cached = await cacheManager.get(cacheKey);
     if (cached) return cached;
 
@@ -463,6 +485,37 @@ class GeminiAIService {
       "Validate handling procedures were followed",
       "Ensure allergen awareness and labeling",
     ];
+  }
+
+  // Method to clear all AI-related cache entries
+  async clearCache() {
+    try {
+      await cacheManager.flush();
+      console.log("AI service cache cleared successfully");
+      return { success: true, message: "Cache cleared successfully" };
+    } catch (error) {
+      console.error("Error clearing AI service cache:", error);
+      return {
+        success: false,
+        message: "Failed to clear cache",
+        error: error.message,
+      };
+    }
+  }
+
+  // Method to get cache statistics
+  async getCacheStats() {
+    try {
+      const stats = await cacheManager.getStats();
+      return { success: true, stats };
+    } catch (error) {
+      console.error("Error getting cache stats:", error);
+      return {
+        success: false,
+        message: "Failed to get cache stats",
+        error: error.message,
+      };
+    }
   }
 }
 
