@@ -10,6 +10,7 @@ class GoogleMapLocationPicker extends StatefulWidget {
   final LatLng? initialLocation;
   final Function(LatLng location, String address) onLocationSelected;
   final String googleApiKey;
+  final FocusNode? addressFocusNode;
 
   const GoogleMapLocationPicker({
     super.key,
@@ -17,6 +18,7 @@ class GoogleMapLocationPicker extends StatefulWidget {
     this.initialLocation,
     required this.onLocationSelected,
     required this.googleApiKey,
+    this.addressFocusNode,
   });
 
   @override
@@ -28,10 +30,17 @@ class _GoogleMapLocationPickerState extends State<GoogleMapLocationPicker> {
   LatLng? _selectedLocation;
   final TextEditingController _addressController = TextEditingController();
   bool _isGettingLocation = false;
+  late FocusNode _internalFocusNode;
+  FocusNode get _effectiveFocusNode =>
+      widget.addressFocusNode ?? _internalFocusNode;
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize focus node
+    _internalFocusNode = FocusNode();
+
     _addressController.text = widget.initialAddress ?? '';
     _selectedLocation = widget.initialLocation;
 
@@ -41,8 +50,21 @@ class _GoogleMapLocationPickerState extends State<GoogleMapLocationPicker> {
   }
 
   @override
+  void didUpdateWidget(GoogleMapLocationPicker oldWidget) {
+    super.didUpdateWidget(oldWidget);
+
+    // Update controller text only if the initialAddress changed meaningfully
+    if (oldWidget.initialAddress != widget.initialAddress &&
+        _addressController.text != widget.initialAddress) {
+      _addressController.text = widget.initialAddress ?? '';
+    }
+  }
+
+  @override
   void dispose() {
     _addressController.dispose();
+    // Only dispose internal focus node, not the one passed from parent
+    _internalFocusNode.dispose();
     super.dispose();
   }
 
@@ -152,6 +174,82 @@ class _GoogleMapLocationPickerState extends State<GoogleMapLocationPicker> {
     }
   }
 
+  Widget _buildAddressTextField() {
+    return Focus(
+      focusNode: _effectiveFocusNode,
+      child: Builder(
+        builder: (context) {
+          return GooglePlaceAutoCompleteTextField(
+            textEditingController: _addressController,
+            googleAPIKey: widget.googleApiKey,
+            inputDecoration: InputDecoration(
+              hintText: 'Search for a location...',
+              prefixIcon: const Icon(Icons.search),
+              border: const OutlineInputBorder(),
+              contentPadding:
+                  const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              // Add clear button manually since we can't use focus node directly
+              suffixIcon: _addressController.text.isNotEmpty
+                  ? IconButton(
+                      icon: const Icon(Icons.clear),
+                      onPressed: () {
+                        _addressController.clear();
+                        _effectiveFocusNode.requestFocus();
+                      },
+                    )
+                  : null,
+            ),
+            debounceTime: 800,
+            countries: const ["lk"],
+            isLatLngRequired: true,
+            getPlaceDetailWithLatLng: (Prediction prediction) {
+              _onPlaceSelected(prediction);
+            },
+            itemClick: (Prediction prediction) {
+              _addressController.text = prediction.description!;
+              _onPlaceSelected(prediction);
+              // Keep focus on the address field after selection
+              _effectiveFocusNode.requestFocus();
+            },
+            seperatedBuilder: const Divider(height: 1),
+            containerHorizontalPadding: 0,
+            itemBuilder: (context, index, Prediction prediction) {
+              return Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Colors.grey.shade100,
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.location_on,
+                        color: Colors.grey.shade600, size: 18),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        prediction.description ?? "",
+                        style: const TextStyle(fontSize: 14),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+            isCrossBtnShown: false, // We handle clear button manually
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -163,59 +261,8 @@ class _GoogleMapLocationPickerState extends State<GoogleMapLocationPicker> {
         ),
         const SizedBox(height: 12),
 
-        // Google Places Search Field with proper positioning
-        GooglePlaceAutoCompleteTextField(
-          textEditingController: _addressController,
-          googleAPIKey: widget.googleApiKey,
-          inputDecoration: const InputDecoration(
-            hintText: 'Search for a location...',
-            prefixIcon: Icon(Icons.search),
-            border: OutlineInputBorder(),
-            contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          ),
-          debounceTime: 800,
-          countries: const ["lk"], // Restrict to Sri Lanka
-          isLatLngRequired: true,
-          getPlaceDetailWithLatLng: (Prediction prediction) {
-            _onPlaceSelected(prediction);
-          },
-          itemClick: (Prediction prediction) {
-            _addressController.text = prediction.description!;
-            _onPlaceSelected(prediction);
-          },
-          seperatedBuilder: const Divider(height: 1),
-          containerHorizontalPadding: 0,
-          itemBuilder: (context, index, Prediction prediction) {
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border(
-                  bottom: BorderSide(
-                    color: Colors.grey.shade100,
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(Icons.location_on,
-                      color: Colors.grey.shade600, size: 18),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      prediction.description ?? "",
-                      style: const TextStyle(fontSize: 14),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-          isCrossBtnShown: true,
-        ),
+        // Google Places Search Field with proper focus control
+        _buildAddressTextField(),
 
         const SizedBox(height: 12),
 

@@ -41,6 +41,11 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
   // Location variable
   LatLng? _selectedLocation;
 
+  // Add focus nodes
+  final FocusNode _addressFocusNode = FocusNode();
+  final FocusNode _quantityFocusNode = FocusNode();
+  final FocusNode _unitFocusNode = FocusNode();
+
   final List<String> _availableCategories = [
     'prepared-meal',
     'fruits',
@@ -78,6 +83,12 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
     _unitController.dispose();
     _addressController.dispose();
     _expectedQuantityController.dispose();
+
+    // Dispose focus nodes
+    _addressFocusNode.dispose();
+    _quantityFocusNode.dispose();
+    _unitFocusNode.dispose();
+
     super.dispose();
   }
 
@@ -249,11 +260,12 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
                     if (_donationType == 'bulk')
                       _buildExpectedQuantitySection(),
 
-                    // Enhanced Google Map Location Picker
+                    // Enhanced Google Map Location Picker with Focus Node
                     GoogleMapLocationPicker(
                       initialAddress: _addressController.text,
                       initialLocation: _selectedLocation,
                       googleApiKey: GoogleMapsConfig.googleMapsApiKey,
+                      addressFocusNode: _addressFocusNode, // Pass focus node
                       onLocationSelected: (LatLng location, String address) {
                         setState(() {
                           _selectedLocation = location;
@@ -560,6 +572,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
               flex: 2,
               child: TextFormField(
                 controller: _quantityController,
+                focusNode: _quantityFocusNode,
                 decoration: const InputDecoration(
                   labelText: 'Amount',
                   border: OutlineInputBorder(),
@@ -582,6 +595,7 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
               flex: 2,
               child: TextFormField(
                 controller: _unitController,
+                focusNode: _unitFocusNode,
                 decoration: const InputDecoration(
                   labelText: 'Unit',
                   border: OutlineInputBorder(),
