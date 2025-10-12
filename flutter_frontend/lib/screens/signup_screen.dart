@@ -100,7 +100,21 @@ class _SignupScreenState extends State<SignupScreen> {
           'registrationNumber': _registrationNumberController.text,
           'foodTypes': _selectedFoodTypes,
         };
-      case 'recipient':
+    case 'recipient':
+        // Create contactInfo map first with explicit type
+        final Map<String, dynamic> contactInfo = {
+          'phone': _phoneController.text,
+          'address': _addressController.text,
+        };
+
+        // Add location to contactInfo if available
+        if (_selectedLocation != null) {
+          contactInfo['location'] = {
+            'lat': _selectedLocation!.latitude,
+            'lng': _selectedLocation!.longitude,
+          };
+        }
+
         final recipientDetails = {
           'organizationName': _orgNameController.text,
           'organizationType': _selectedOrgType ?? 'other',
@@ -110,9 +124,10 @@ class _SignupScreenState extends State<SignupScreen> {
           'preferredFoodTypes': _selectedPreferredFoodTypes,
           'currentLoad': 0,
           'isActive': true,
+          'contactInfo': contactInfo, // Use the pre-built contactInfo
         };
 
-        // Add location if available
+        // Also add location to main recipientDetails if available
         if (_selectedLocation != null) {
           recipientDetails['location'] = {
             'lat': _selectedLocation!.latitude,

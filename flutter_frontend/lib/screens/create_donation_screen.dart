@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:uee_project/screens/donor_dashboard.dart';
 import 'dart:io';
 import '../providers/donation_provider.dart';
 import '../models/donation_model.dart';
@@ -922,7 +923,9 @@ class _CreateDonationScreenState extends State<CreateDonationScreen> {
           ),
         );
         // Navigate back to donor dashboard by popping all routes and going to dashboard
-        Navigator.of(context).popUntil((route) => route.isFirst);
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const DonorDashboardScreen()),
+        );
       }
     } catch (e) {
       if (mounted) {
