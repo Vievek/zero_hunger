@@ -2,30 +2,6 @@ const geminiService = require("../services/geminiService");
 const QRCode = require("qrcode");
 const Donation = require("../models/Donation");
 
-// Enhanced food safety knowledge base
-const FOOD_SAFETY_KNOWLEDGE_BASE = {
-  sources: [
-    "World Health Organization (WHO) - Food Safety Guidelines",
-    "US FDA - Food Code and Safety Standards",
-    "USDA - Food Safety and Inspection Service",
-    "European Food Safety Authority (EFSA)",
-    "Food Standards Australia New Zealand (FSANZ)",
-    "CDC - Food Safety Guidelines",
-  ],
-  temperatureDangerZone: "4°C to 60°C (40°F to 140°F)",
-  maxRefrigerationTime: "2 hours for perishables above danger zone",
-  reheatingTemperature: "74°C (165°F) for leftovers",
-  criticalTemperatures: {
-    poultry: "74°C (165°F)",
-    groundMeat: "71°C (160°F)",
-    beefSteaks: "63°C (145°F)",
-    pork: "63°C (145°F)",
-    fish: "63°C (145°F)",
-    eggs: "71°C (160°F)",
-    leftovers: "74°C (165°F)",
-  },
-};
-
 // Controller functions
 const askFoodSafetyQuestion = async (req, res) => {
   try {
@@ -53,14 +29,8 @@ const askFoodSafetyQuestion = async (req, res) => {
       context
     );
 
-    // response.sources = FOOD_SAFETY_KNOWLEDGE_BASE.sources;
+    // Add timestamp to response
     response.timestamp = new Date().toISOString();
-    response.confidenceScore = response.confidenceScore || 0.95;
-
-    if (FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[foodType]) {
-      response.criticalTemperature =
-        FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[foodType];
-    }
 
     res.json({
       success: true,
@@ -71,37 +41,13 @@ const askFoodSafetyQuestion = async (req, res) => {
 
     const fallbackResponse = {
       answer:
-        "I'm currently unable to access detailed food safety information. However, based on established food safety guidelines:\n\n• Keep hot foods hot (above 60°C/140°F) and cold foods cold (below 4°C/40°F)\n• When in doubt, throw it out - this is always the safest approach\n• Wash hands and surfaces thoroughly and often\n• Separate raw and cooked foods to prevent cross-contamination\n• Cook foods to proper internal temperatures\n• Refrigerate promptly within 2 hours (1 hour if above 32°C/90°F)",
-      safetyGuidelines: [
-        "Keep perishables out of temperature danger zone (4°C-60°C)",
-        "Use refrigerated leftovers within 3-4 days",
-        "Reheat leftovers to 74°C (165°F) throughout",
-        "When in doubt, discard questionable food immediately",
-      ],
-      storageRecommendations: [
-        "Refrigerate at or below 4°C (40°F)",
-        "Freeze at or below -18°C (0°F)",
-        "Use airtight containers for storage",
-        "Label and date all stored foods clearly",
-      ],
-      temperatureGuidelines: [
-        "Keep hot foods above 60°C (140°F)",
-        "Keep cold foods below 4°C (40°F)",
-        "Reheat to 74°C (165°F) if applicable",
-      ],
-      sources: FOOD_SAFETY_KNOWLEDGE_BASE.sources,
-      additionalTips: [
-        "Consult local food safety authorities for specific concerns",
-        "Follow manufacturer storage instructions when available",
-        "Trust your senses - unusual odors, colors, or textures indicate spoilage",
-      ],
-      confidenceScore: 0.7,
+        "I'm currently unable to access food safety information. Please try again later or consult local food safety authorities for immediate concerns.",
+      timestamp: new Date().toISOString(),
     };
 
     res.status(200).json({
       success: true,
       data: fallbackResponse,
-      note: "Using enhanced fallback food safety information",
     });
   }
 };
@@ -164,49 +110,15 @@ const generateFoodLabel = async (req, res) => {
       foodType: donationDetails.foodType,
       generatedAt: new Date().toISOString(),
       safetyInfo: "Handle with food safety precautions",
-      criticalTemperature:
-        FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[
-          donationDetails.foodType
-        ],
     };
 
     const qrCodeDataUrl = await QRCode.toDataURL(JSON.stringify(qrCodeData));
-
-    const printableLabel = {
-      title: "FoodSafe AI Handling Instructions",
-      description: donationDetails.description,
-      categories: donationDetails.categories.join(", "),
-      allergens:
-        donationDetails.allergens.length > 0
-          ? `Contains: ${donationDetails.allergens.join(", ")}`
-          : "No major allergens detected",
-      handlingInstructions: labelData,
-      safetyGuidelines: [
-        "Keep refrigerated below 4°C (40°F) unless otherwise specified",
-        "Consume within recommended timeframe",
-        "Reheat to 74°C (165°F) if applicable",
-        "When in doubt, throw it out - safety first",
-      ],
-      criticalInfo: FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[
-        donationDetails.foodType
-      ]
-        ? `Safe cooking temperature: ${
-            FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[
-              donationDetails.foodType
-            ]
-          }`
-        : "Follow standard food safety practices",
-      qrCode: qrCodeDataUrl,
-      generatedAt: new Date().toLocaleString(),
-      sources: FOOD_SAFETY_KNOWLEDGE_BASE.sources,
-    };
 
     res.json({
       success: true,
       data: {
         labelText: labelData,
         qrCode: qrCodeDataUrl,
-        printableLabel: printableLabel,
         donationId: donationId,
       },
     });
@@ -225,23 +137,11 @@ const generateFoodLabel = async (req, res) => {
       qrCode: await QRCode.toDataURL(
         "Food Safety: Keep refrigerated, consume quickly, check allergens"
       ),
-      printableLabel: {
-        title: "Food Safety Label",
-        description: "Food Donation",
-        handlingInstructions: fallback,
-        safetyGuidelines: [
-          "Keep refrigerated below 4°C (40°F)",
-          "Consume within 24 hours",
-          "Check for allergens before consumption",
-          "When in doubt, throw it out",
-        ],
-      },
     };
 
     res.status(200).json({
       success: true,
       data: fallbackLabel,
-      note: "Generated enhanced safety label",
     });
   }
 };
@@ -258,21 +158,6 @@ const getSafetyChecklist = async (req, res) => {
       success: true,
       data: {
         checklist,
-        sources: FOOD_SAFETY_KNOWLEDGE_BASE.sources,
-        applicableStandards: [
-          "WHO Food Safety Guidelines",
-          "US FDA Food Code",
-          "USDA Food Safety",
-          "HACCP Principles",
-          "Local Food Safety Regulations",
-        ],
-        criticalPoints: FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[
-          foodType
-        ]
-          ? [
-              `Cooking Temperature: ${FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[foodType]}`,
-            ]
-          : ["Maintain safe temperatures throughout handling"],
       },
     });
   } catch (error) {
@@ -290,8 +175,6 @@ const getSafetyChecklist = async (req, res) => {
           "Validate handling procedures were followed",
           "Check allergen information and labeling",
         ],
-        sources: FOOD_SAFETY_KNOWLEDGE_BASE.sources,
-        note: "Enhanced safety checklist",
       },
     });
   }
@@ -302,25 +185,23 @@ const getQuickReference = async (req, res) => {
     const { foodType } = req.query;
 
     const quickRef = {
-      temperatureDangerZone: FOOD_SAFETY_KNOWLEDGE_BASE.temperatureDangerZone,
-      maxRefrigerationTime: FOOD_SAFETY_KNOWLEDGE_BASE.maxRefrigerationTime,
-      reheatingTemperature: FOOD_SAFETY_KNOWLEDGE_BASE.reheatingTemperature,
-      criticalTemperatures: FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures,
-      generalGuidelines: [
-        "Wash hands and surfaces often",
-        "Separate raw and cooked foods",
-        "Cook to proper temperatures",
-        "Refrigerate promptly",
-        "When in doubt, throw it out",
-      ],
+      temperatureDangerZone: "4°C to 60°C (40°F to 140°F)",
+      maxRefrigerationTime: "2 hours for perishables above danger zone",
+      reheatingTemperature: "74°C (165°F) for leftovers",
+      criticalTemperatures: {
+        poultry: "74°C (165°F)",
+        groundMeat: "71°C (160°F)",
+        beefSteaks: "63°C (145°F)",
+        pork: "63°C (145°F)",
+        fish: "63°C (145°F)",
+        eggs: "71°C (160°F)",
+        leftovers: "74°C (165°F)",
+      },
     };
 
-    if (foodType && FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[foodType]) {
+    if (foodType && quickRef.criticalTemperatures[foodType]) {
       quickRef.specificGuidance = {
-        safeTemperature:
-          FOOD_SAFETY_KNOWLEDGE_BASE.criticalTemperatures[foodType],
-        storageTime: "Varies by food type - consult specific guidelines",
-        handlingNotes: "Follow specific food type safety protocols",
+        safeTemperature: quickRef.criticalTemperatures[foodType],
       };
     }
 

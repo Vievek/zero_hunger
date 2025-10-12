@@ -207,48 +207,27 @@ class GeminiAIService {
 
     try {
       const prompt = `
-        You are a certified food safety expert working with global food safety authorities. 
-        Provide accurate, evidence-based food safety information.
+        You are a certified food safety expert. Provide a CONCISE, direct answer to the user's question.
+        Focus only on what the user specifically asked for.
 
         FOOD TYPE: ${foodType}
         QUESTION: ${question}
         CONTEXT: ${JSON.stringify(context)}
 
-        CRITICAL FOOD SAFETY PARAMETERS:
-        - Temperature Danger Zone: ${
-          this.FOOD_SAFETY_KNOWLEDGE.temperatureDangerZone
-        }
-        - Maximum refrigeration time: ${
-          this.FOOD_SAFETY_KNOWLEDGE.maxRefrigerationTime
-        } 
-        - Reheating temperature: ${
-          this.FOOD_SAFETY_KNOWLEDGE.reheatingTemperature
-        }
-
         REQUIREMENTS:
-        1. Provide specific, actionable advice
-        2. Reference established food safety standards
-        3. Include temperature guidelines where applicable
-        4. Mention time limits for storage
-        5. Address common food safety misconceptions
-        6. Be conservative in recommendations (when in doubt, recommend discarding)
-        7. Cite specific food safety authorities
+        1. Answer directly and concisely - maximum 2-3 sentences
+        2. Provide only the essential information the user needs
+        3. No lists, no guidelines, no additional tips
+        4. Just answer the specific question
+        5. If temperature is relevant, include only the critical temperature
+        6. If time is relevant, include only the critical time limit
 
-        Respond in this EXACT JSON format:
+        Return ONLY a simple JSON with the answer:
         {
-          "answer": "comprehensive answer with specific guidelines and authority references",
-          "safetyGuidelines": ["array of 3-5 critical safety rules"],
-          "storageRecommendations": ["array of 3-5 storage tips"], 
-          "temperatureGuidelines": ["array of temperature rules"],
-          "timeLimits": ["array of time-based safety rules"],
-          "commonMistakes": ["array of common errors to avoid"],
-          "additionalTips": ["array of extra safety considerations"],
-          "authorityReferences": ["array of which authorities this follows"],
-          "confidenceScore": 0.95
+          "answer": "Your concise answer here"
         }
 
-        Base your response on established food safety science from WHO, FDA, USDA, and other global authorities.
-        Be concise but thorough. Prioritize safety over everything.
+        Do NOT include any other fields. Just the answer.
       `;
 
       const result = await this.model.generateContent(prompt);
@@ -262,101 +241,30 @@ class GeminiAIService {
 
       let safetyInfo = JSON.parse(jsonMatch[0]);
 
-      // Ensure all required fields exist with proper fallbacks
-      safetyInfo = {
-        answer: safetyInfo.answer || this.getFallbackAnswer(foodType, question),
-        safetyGuidelines:
-          safetyInfo.safetyGuidelines || this.getFallbackGuidelines(),
-        storageRecommendations:
-          safetyInfo.storageRecommendations || this.getFallbackStorage(),
-        temperatureGuidelines:
-          safetyInfo.temperatureGuidelines || this.getFallbackTemperatures(),
-        timeLimits: safetyInfo.timeLimits || this.getFallbackTimeLimits(),
-        commonMistakes: safetyInfo.commonMistakes || this.getFallbackMistakes(),
-        additionalTips: safetyInfo.additionalTips || this.getFallbackTips(),
-        authorityReferences:
-          safetyInfo.authorityReferences || this.FOOD_SAFETY_KNOWLEDGE.sources,
-        confidenceScore: safetyInfo.confidenceScore || 0.8,
-        sources: this.FOOD_SAFETY_KNOWLEDGE.sources,
+      // Ensure we only have the answer field
+      const cleanResponse = {
+        answer:
+          safetyInfo.answer || this.getSimpleFallbackAnswer(foodType, question),
       };
 
-      await cacheManager.set(cacheKey, safetyInfo, 1800); // Cache for 30 minutes
-      return safetyInfo;
+      await cacheManager.set(cacheKey, cleanResponse, 1800); // Cache for 30 minutes
+      return cleanResponse;
     } catch (error) {
       console.error("Food safety info generation error:", error);
 
-      const fallback = this.getEnhancedFallbackResponse(foodType, question);
+      const fallback = {
+        answer: this.getSimpleFallbackAnswer(foodType, question),
+      };
+
       await cacheManager.set(cacheKey, fallback, 600); // Cache fallback for 10 minutes
       return fallback;
     }
   }
 
-  getFallbackAnswer(foodType, question) {
-    return `Based on established food safety guidelines from WHO and FDA for ${foodType}:\n\n• Keep hot foods hot (above 60°C/140°F) and cold foods cold (below 4°C/40°F)\n• When in doubt, throw it out - this is always the safest approach\n• Wash hands and surfaces often\n• Separate raw and cooked foods\n• Cook to proper temperatures\n• Refrigerate promptly within 2 hours`;
-  }
-
-  getFallbackGuidelines() {
-    return [
-      "Keep perishables out of temperature danger zone (4°C-60°C)",
-      "Use refrigerated leftovers within 3-4 days",
-      "Reheat leftovers to 74°C (165°F)",
-      "When in doubt, discard questionable food",
-    ];
-  }
-
-  getFallbackStorage() {
-    return [
-      "Refrigerate at or below 4°C (40°F)",
-      "Freeze at or below -18°C (0°F)",
-      "Use airtight containers for storage",
-      "Label and date all stored foods",
-    ];
-  }
-
-  getFallbackTemperatures() {
-    return [
-      "Keep hot foods above 60°C (140°F)",
-      "Keep cold foods below 4°C (40°F)",
-      "Reheat to 74°C (165°F) if applicable",
-    ];
-  }
-
-  getFallbackTimeLimits() {
-    return [
-      "Maximum 2 hours in temperature danger zone",
-      "3-4 days for refrigerated leftovers",
-      "Follow 'first in, first out' principle",
-    ];
-  }
-
-  getFallbackMistakes() {
-    return [
-      "Tasting food to check spoilage",
-      "Ignoring unusual odors or colors",
-      "Overcrowding refrigerator",
-    ];
-  }
-
-  getFallbackTips() {
-    return [
-      "Consult local food safety authorities for specific concerns",
-      "Follow manufacturer storage instructions when available",
-    ];
-  }
-
-  getEnhancedFallbackResponse(foodType, question) {
-    return {
-      answer: this.getFallbackAnswer(foodType, question),
-      safetyGuidelines: this.getFallbackGuidelines(),
-      storageRecommendations: this.getFallbackStorage(),
-      temperatureGuidelines: this.getFallbackTemperatures(),
-      timeLimits: this.getFallbackTimeLimits(),
-      commonMistakes: this.getFallbackMistakes(),
-      additionalTips: this.getFallbackTips(),
-      authorityReferences: this.FOOD_SAFETY_KNOWLEDGE.sources,
-      sources: this.FOOD_SAFETY_KNOWLEDGE.sources,
-      confidenceScore: 0.7,
-    };
+  getSimpleFallbackAnswer(foodType, question) {
+    return `For ${
+      foodType || "food safety"
+    }, keep hot foods above 60°C and cold foods below 4°C. Refrigerate within 2 hours. When in doubt, throw it out.`;
   }
 
   async generateQRCodeContent(donationDetails) {
