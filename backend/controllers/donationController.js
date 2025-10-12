@@ -626,31 +626,62 @@ exports.getDonationStats = async (req, res) => {
   try {
     const userId = req.user.id;
 
-    // Simple approach using Mongoose find()
+    // Get all donations for the user
     const donations = await Donation.find({ donor: userId });
 
+    // Calculate meaningful, real-world stats
     const stats = {
+      // Basic counts
       total: donations.length,
       active: donations.filter((d) =>
-        ["active", "matched", "scheduled"].includes(d.status)
+        ["active", "matched", "scheduled", "ai_processing"].includes(d.status)
       ).length,
       completed: donations.filter((d) => d.status === "delivered").length,
-      pending: donations.filter((d) =>
-        ["pending", "ai_processing"].includes(d.status)
-      ).length,
-      totalQuantity: donations.reduce(
-        (sum, d) => sum + (d.quantity?.amount || 0),
-        0
-      ),
+      cancelled: donations.filter((d) => d.status === "cancelled").length,
+      pending: donations.filter((d) => d.status === "pending").length,
+
+      // Impact metrics (more relevant)
       totalImpact: donations
         .filter((d) => d.status === "delivered")
         .reduce((sum, d) => sum + (d.quantity?.amount || 0), 0),
+
+      // Current active impact
+      activeImpact: donations
+        .filter((d) => ["active", "matched", "scheduled"].includes(d.status))
+        .reduce((sum, d) => sum + (d.quantity?.amount || 0), 0),
+
+      // Success rate (percentage of completed vs total non-cancelled)
+      successRate: 0,
     };
 
-    res.json({ success: true, data: stats });
+    // Calculate success rate (excluding cancelled donations)
+    const nonCancelledDonations = donations.filter(
+      (d) => d.status !== "cancelled"
+    );
+    if (nonCancelledDonations.length > 0) {
+      stats.successRate = Math.round(
+        (stats.completed / nonCancelledDonations.length) * 100
+      );
+    }
+
+    // Add time-based stats for better insights
+    const last30Days = new Date();
+    last30Days.setDate(last30Days.getDate() - 30);
+
+    stats.recentDonations = donations.filter(
+      (d) => d.createdAt >= last30Days
+    ).length;
+
+    res.json({
+      success: true,
+      data: stats,
+    });
   } catch (error) {
     console.error("💥 Get donation stats error:", error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
   }
 };
 

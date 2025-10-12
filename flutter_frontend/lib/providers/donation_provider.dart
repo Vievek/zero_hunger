@@ -188,15 +188,19 @@ class DonationProvider with ChangeNotifier {
     }
   }
 
+  // Enhanced method to refresh stats after status changes
   Future<void> updateDonationStatus(String donationId, String status) async {
     try {
       await _apiService.updateDonationStatus(donationId, status);
 
-      // Update local state
+      // Update local state immediately
       final donationIndex = _donations.indexWhere((d) => d.id == donationId);
       if (donationIndex != -1) {
         _donations[donationIndex] =
             _donations[donationIndex].copyWith(status: status);
+
+        // Refresh stats from backend to ensure accuracy
+        await fetchDonationStats();
         notifyListeners();
       }
     } catch (error) {
@@ -474,32 +478,47 @@ class DonationProvider with ChangeNotifier {
     return _processingDonations[donationId] == true;
   }
 
-  Map<String, int> get donationStatsSummary {
-    // Use backend stats if available, fallback to local calculation
+  // FIXED: Single donationStatsSummary getter with proper types
+  Map<String, dynamic> get donationStatsSummary {
+    // Use backend stats if available, otherwise calculate locally
     if (_donationStats.isNotEmpty) {
       return {
         'total': _donationStats['total'] ?? 0,
         'active': _donationStats['active'] ?? 0,
         'completed': _donationStats['completed'] ?? 0,
+        'cancelled': _donationStats['cancelled'] ?? 0,
         'pending': _donationStats['pending'] ?? 0,
+        'totalImpact': _donationStats['totalImpact'] ?? 0,
+        'activeImpact': _donationStats['activeImpact'] ?? 0,
+        'successRate': _donationStats['successRate'] ?? 0,
+        'recentDonations': _donationStats['recentDonations'] ?? 0,
       };
     }
 
-    // Fallback to local calculation if backend stats not available
+    // Fallback to local calculation
     return {
       'total': _donations.length,
       'active': _donations
-          .where((d) => ['active', 'matched', 'scheduled'].contains(d.status))
+          .where((d) => ['active', 'matched', 'scheduled', 'ai_processing']
+              .contains(d.status))
           .length,
       'completed': _donations.where((d) => d.status == 'delivered').length,
-      'pending': _donations
-          .where((d) => ['pending', 'ai_processing'].contains(d.status))
-          .length,
+      'cancelled': _donations.where((d) => d.status == 'cancelled').length,
+      'pending': _donations.where((d) => d.status == 'pending').length,
+      'totalImpact': _donations.where((d) => d.status == 'delivered').fold<int>(
+          0,
+          (int sum, d) => sum + ((d.quantity['amount'] as num?)?.toInt() ?? 0)),
+      'activeImpact': _donations
+          .where((d) => ['active', 'matched', 'scheduled'].contains(d.status))
+          .fold<int>(
+              0,
+              (int sum, d) =>
+                  sum + ((d.quantity['amount'] as num?)?.toInt() ?? 0)),
     };
   }
 
-  // Enhanced donation stats for recipient
-  Map<String, int> get recipientStatsSummary {
+  // NEW: Add recipientStatsSummary getter
+  Map<String, dynamic> get recipientStatsSummary {
     if (_donationStats.isNotEmpty) {
       return {
         'available':
@@ -520,8 +539,18 @@ class DonationProvider with ChangeNotifier {
           .where((d) => d.status == 'matched' || d.status == 'scheduled')
           .length,
       'delivered': _donations.where((d) => d.status == 'delivered').length,
-      'totalMeals': 0,
-      'acceptanceRate': 0,
+      'totalMeals': _donations.where((d) => d.status == 'delivered').fold<int>(
+          0,
+          (int sum, d) => sum + ((d.quantity['amount'] as num?)?.toInt() ?? 0)),
+      'acceptanceRate': _matchedDonations.isNotEmpty
+          ? ((_donations
+                          .where((d) =>
+                              d.status == 'matched' || d.status == 'scheduled')
+                          .length /
+                      _matchedDonations.length) *
+                  100)
+              .round()
+          : 0,
     };
   }
 
