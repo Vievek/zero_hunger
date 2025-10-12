@@ -53,7 +53,7 @@ const askFoodSafetyQuestion = async (req, res) => {
       context
     );
 
-    response.sources = FOOD_SAFETY_KNOWLEDGE_BASE.sources;
+    // response.sources = FOOD_SAFETY_KNOWLEDGE_BASE.sources;
     response.timestamp = new Date().toISOString();
     response.confidenceScore = response.confidenceScore || 0.95;
 
