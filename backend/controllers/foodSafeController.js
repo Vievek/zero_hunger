@@ -337,49 +337,10 @@ const getQuickReference = async (req, res) => {
   }
 };
 
-const clearAICache = async (req, res) => {
-  try {
-    const result = await geminiService.clearCache();
-
-    res.json({
-      success: true,
-      message: "AI cache cleared successfully",
-      data: result,
-    });
-  } catch (error) {
-    console.error("Clear cache error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to clear AI cache",
-      error: error.message,
-    });
-  }
-};
-
-const getCacheStats = async (req, res) => {
-  try {
-    const result = await geminiService.getCacheStats();
-
-    res.json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    console.error("Get cache stats error:", error);
-    res.status(500).json({
-      success: false,
-      message: "Failed to get cache statistics",
-      error: error.message,
-    });
-  }
-};
-
 // Export all functions properly
 module.exports = {
   askFoodSafetyQuestion,
   generateFoodLabel,
   getSafetyChecklist,
   getQuickReference,
-  clearAICache,
-  getCacheStats,
 };
