@@ -10,7 +10,85 @@ class RouteOptimizationService {
     this.assignmentCache = new Map();
     this.cacheTimeout = 2 * 60 * 1000; // 2 minutes
   }
+  async getRealTimeRoute(origin, destination) {
+    try {
+      if (!this.useRealTimeTraffic) {
+        // Fallback to basic route calculation
+        return this.createBasicRoute([
+          {
+            pickupLocation: origin,
+            dropoffLocation: destination,
+          },
+        ]);
+      }
 
+      const response = await axios.get(
+        `https://maps.googleapis.com/maps/api/directions/json`,
+        {
+          params: {
+            origin: `${origin.lat},${origin.lng}`,
+            destination: `${destination.lat},${destination.lng}`,
+            key: this.googleMapsKey,
+            departure_time: "now",
+            traffic_model: "best_guess",
+            alternatives: false,
+          },
+          timeout: 10000,
+        }
+      );
+
+      if (response.data.routes && response.data.routes.length > 0) {
+        const route = response.data.routes[0];
+        const leg = route.legs[0];
+
+        return {
+          totalDistance: leg.distance.value, // meters
+          estimatedDuration: leg.duration.value, // seconds
+          estimatedDurationInTraffic:
+            leg.duration_in_traffic?.value || leg.duration.value,
+          polyline: route.overview_polyline.points,
+          trafficConditions: this.analyzeTrafficConditions(leg),
+          steps: leg.steps.map((step) => ({
+            instruction: step.html_instructions,
+            distance: step.distance.text,
+            duration: step.duration.text,
+          })),
+        };
+      }
+
+      throw new Error("No route found");
+    } catch (error) {
+      console.error("Real-time route error:", error.message);
+
+      // Fallback to basic distance calculation
+      const distance = this.calculateSimpleDistance(origin, destination) * 1000; // meters
+      const estimatedDuration = (distance / 1000) * 120; // Assume 50km/h average
+
+      return {
+        totalDistance: distance,
+        estimatedDuration: estimatedDuration,
+        estimatedDurationInTraffic: estimatedDuration,
+        polyline: null,
+        trafficConditions: "unknown",
+        steps: [],
+        isFallback: true,
+      };
+    }
+  }
+
+  // ADD THIS HELPER METHOD
+  analyzeTrafficConditions(leg) {
+    if (!leg.duration_in_traffic) return "unknown";
+
+    const normalDuration = leg.duration.value;
+    const trafficDuration = leg.duration_in_traffic.value;
+    const trafficRatio = trafficDuration / normalDuration;
+
+    if (trafficRatio >= 2.0) return "heavy";
+    if (trafficRatio >= 1.5) return "moderate";
+    if (trafficRatio >= 1.2) return "light";
+    return "smooth";
+  }
   // SIMPLIFIED: Rule-based volunteer assignment
   async findOptimalVolunteer(
     pickupLocation,

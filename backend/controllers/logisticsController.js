@@ -375,6 +375,7 @@ exports.getOptimizedRoute = async (req, res) => {
       );
     } else {
       // Single task route with real-time traffic
+      // FIX: Use the new getRealTimeRoute method
       optimizedRoute = await routeOptimizationService.getRealTimeRoute(
         task.pickupLocation,
         task.dropoffLocation
