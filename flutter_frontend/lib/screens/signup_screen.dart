@@ -153,6 +153,42 @@ class _SignupScreenState extends State<SignupScreen> {
     }
   }
 
+  // Custom input decoration with rounded borders
+  InputDecoration _roundedInputDecoration({
+    required String labelText,
+    required IconData prefixIcon,
+    String? hintText,
+  }) {
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: const BorderSide(color: Colors.grey),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: const BorderSide(color: Colors.grey),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: BorderSide(color: Theme.of(context).primaryColor),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: const BorderSide(color: Colors.red),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: const BorderSide(color: Colors.red),
+      ),
+      filled: true,
+      fillColor: Colors.white,
+      prefixIcon: Icon(prefixIcon),
+      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+    );
+  }
+
   Widget _buildRoleSpecificFields() {
     switch (_selectedRole) {
       case 'donor':
@@ -160,10 +196,9 @@ class _SignupScreenState extends State<SignupScreen> {
           children: [
             TextFormField(
               controller: _businessNameController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Business Name *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.business),
+                prefixIcon: Icons.business,
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -175,10 +210,9 @@ class _SignupScreenState extends State<SignupScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _businessTypeController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Business Type *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.category),
+                prefixIcon: Icons.category,
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -190,20 +224,18 @@ class _SignupScreenState extends State<SignupScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _businessAddressController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Business Address',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.location_on),
+                prefixIcon: Icons.location_on,
                 hintText: 'Leave empty to use personal address',
               ),
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _registrationNumberController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Registration Number',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.assignment),
+                prefixIcon: Icons.assignment,
               ),
             ),
           ],
@@ -213,10 +245,9 @@ class _SignupScreenState extends State<SignupScreen> {
           children: [
             TextFormField(
               controller: _orgNameController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Organization Name *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.people),
+                prefixIcon: Icons.people,
               ),
               validator: (value) {
                 if (value == null || value.isEmpty) {
@@ -227,12 +258,10 @@ class _SignupScreenState extends State<SignupScreen> {
             ),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
-              // FIXED: Use initialValue instead of value
               initialValue: _selectedOrgType,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Organization Type *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.category),
+                prefixIcon: Icons.category,
               ),
               items: const [
                 DropdownMenuItem(value: 'shelter', child: Text('Shelter')),
@@ -259,10 +288,9 @@ class _SignupScreenState extends State<SignupScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _capacityController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Capacity (people) *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.group),
+                prefixIcon: Icons.group,
               ),
               keyboardType: TextInputType.number,
               validator: (value) {
@@ -306,10 +334,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 Expanded(
                   child: TextFormField(
                     controller: _operatingHoursStartController,
-                    decoration: const InputDecoration(
+                    decoration: _roundedInputDecoration(
                       labelText: 'Start Time',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.access_time),
+                      prefixIcon: Icons.access_time,
                       hintText: '09:00',
                     ),
                   ),
@@ -318,10 +345,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 Expanded(
                   child: TextFormField(
                     controller: _operatingHoursEndController,
-                    decoration: const InputDecoration(
+                    decoration: _roundedInputDecoration(
                       labelText: 'End Time',
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.access_time),
+                      prefixIcon: Icons.access_time,
                       hintText: '17:00',
                     ),
                   ),
@@ -339,12 +365,10 @@ class _SignupScreenState extends State<SignupScreen> {
         return Column(
           children: [
             DropdownButtonFormField<String>(
-              // FIXED: Use initialValue instead of value
               initialValue: _selectedVehicleType,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Vehicle Type *',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.directions_car),
+                prefixIcon: Icons.directions_car,
               ),
               items: const [
                 DropdownMenuItem(value: 'bike', child: Text('Bike')),
@@ -368,20 +392,18 @@ class _SignupScreenState extends State<SignupScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _contactNumberController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Contact Number',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.phone),
+                prefixIcon: Icons.phone,
                 hintText: 'Leave empty to use main phone number',
               ),
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _maxDistanceController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Max Distance (km)',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.place),
+                prefixIcon: Icons.place,
                 hintText: 'Default: 20 km',
               ),
               keyboardType: TextInputType.number,
@@ -389,10 +411,9 @@ class _SignupScreenState extends State<SignupScreen> {
             const SizedBox(height: 16),
             TextFormField(
               controller: _volunteerCapacityController,
-              decoration: const InputDecoration(
+              decoration: _roundedInputDecoration(
                 labelText: 'Delivery Capacity',
-                border: OutlineInputBorder(),
-                prefixIcon: Icon(Icons.local_shipping),
+                prefixIcon: Icons.local_shipping,
                 hintText: 'Default: 10 deliveries',
               ),
               keyboardType: TextInputType.number,
@@ -424,13 +445,65 @@ class _SignupScreenState extends State<SignupScreen> {
           child: SingleChildScrollView(
             child: Column(
               children: [
+                // Logo at the top
+                Container(
+                  margin: const EdgeInsets.only(bottom: 24, top: 16),
+                  height: 100,
+                  width: 100,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(20),
+                    color: Colors.white,
+                    boxShadow: [
+                      BoxShadow(
+                        // ignore: deprecated_member_use
+                        color: Colors.grey.withOpacity(0.3),
+                        blurRadius: 10,
+                        offset: const Offset(0, 5),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: Image.asset(
+                      'assets/images/Logo.png', // Replace with your actual logo path
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) {
+                        return Container(
+                          alignment: Alignment.center,
+                          child: const Icon(
+                            Icons.fastfood,
+                            size: 40,
+                            color: Colors.orange,
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+
+                const Text(
+                  'Create Account',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Join as ${_selectedRole.toUpperCase()}',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
                 // Name Field
                 TextFormField(
                   controller: _nameController,
-                  decoration: const InputDecoration(
+                  decoration: _roundedInputDecoration(
                     labelText: 'Full Name',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.person),
+                    prefixIcon: Icons.person,
                   ),
                   validator: (value) {
                     if (value == null || value.isEmpty) {
@@ -444,10 +517,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Email Field
                 TextFormField(
                   controller: _emailController,
-                  decoration: const InputDecoration(
+                  decoration: _roundedInputDecoration(
                     labelText: 'Email',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.email),
+                    prefixIcon: Icons.email,
                   ),
                   keyboardType: TextInputType.emailAddress,
                   validator: (value) {
@@ -465,10 +537,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Password Field
                 TextFormField(
                   controller: _passwordController,
-                  decoration: const InputDecoration(
+                  decoration: _roundedInputDecoration(
                     labelText: 'Password',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock),
+                    prefixIcon: Icons.lock,
                   ),
                   obscureText: true,
                   validator: (value) {
@@ -486,10 +557,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Confirm Password Field
                 TextFormField(
                   controller: _confirmPasswordController,
-                  decoration: const InputDecoration(
+                  decoration: _roundedInputDecoration(
                     labelText: 'Confirm Password',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.lock_outline),
+                    prefixIcon: Icons.lock_outline,
                   ),
                   obscureText: true,
                   validator: (value) {
@@ -508,10 +578,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 TextFormField(
                   controller:
                       TextEditingController(text: _selectedRole.toUpperCase()),
-                  decoration: const InputDecoration(
+                  decoration: _roundedInputDecoration(
                     labelText: 'Role',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.people),
+                    prefixIcon: Icons.people,
                   ),
                   readOnly: true,
                 ),
@@ -523,10 +592,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Phone Field
                 TextFormField(
                   controller: _phoneController,
-                  decoration: const InputDecoration(
+                  decoration: _roundedInputDecoration(
                     labelText: 'Phone Number',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.phone),
+                    prefixIcon: Icons.phone,
                   ),
                   keyboardType: TextInputType.phone,
                   validator: (value) {
@@ -541,10 +609,9 @@ class _SignupScreenState extends State<SignupScreen> {
                 // Address Field
                 TextFormField(
                   controller: _addressController,
-                  decoration: const InputDecoration(
+                  decoration: _roundedInputDecoration(
                     labelText: 'Address',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.location_on),
+                    prefixIcon: Icons.location_on,
                   ),
                   maxLines: 2,
                   validator: (value) {
@@ -557,14 +624,21 @@ class _SignupScreenState extends State<SignupScreen> {
                 const SizedBox(height: 16),
 
                 // Save Login Info
-                CheckboxListTile(
-                  title: const Text('Remember me'),
-                  value: _saveLogin,
-                  onChanged: (value) {
-                    setState(() {
-                      _saveLogin = value!;
-                    });
-                  },
+                Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    color: Colors.white,
+                    border: Border.all(color: Colors.grey.shade300),
+                  ),
+                  child: CheckboxListTile(
+                    title: const Text('Remember me'),
+                    value: _saveLogin,
+                    onChanged: (value) {
+                      setState(() {
+                        _saveLogin = value!;
+                      });
+                    },
+                  ),
                 ),
                 const SizedBox(height: 24),
 
@@ -574,13 +648,30 @@ class _SignupScreenState extends State<SignupScreen> {
                   height: 50,
                   child: ElevatedButton(
                     onPressed: authProvider.isLoading ? null : _signUp,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 2,
+                    ),
                     child: authProvider.isLoading
                         ? const SizedBox(
                             height: 20,
                             width: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
                           )
-                        : const Text('Sign Up', style: TextStyle(fontSize: 16)),
+                        : const Text(
+                            'Sign Up',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
                   ),
                 ),
 
@@ -588,9 +679,25 @@ class _SignupScreenState extends State<SignupScreen> {
                 if (authProvider.error != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 16),
-                    child: Text(
-                      authProvider.error!,
-                      style: const TextStyle(color: Colors.red),
+                    child: Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.red.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.red.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.error, color: Colors.red.shade600),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              authProvider.error!,
+                              style: TextStyle(color: Colors.red.shade700),
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
               ],
@@ -650,7 +757,14 @@ class _SignupScreenState extends State<SignupScreen> {
       debugPrint('register failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Registration failed: $e')),
+          SnackBar(
+            content: Text('Registration failed: $e'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
         );
       }
     }

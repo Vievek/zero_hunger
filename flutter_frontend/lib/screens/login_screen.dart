@@ -18,6 +18,44 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _saveLoginInfo = true;
   bool _obscurePassword = true;
 
+  // Custom input decoration with rounded borders
+  InputDecoration _roundedInputDecoration({
+    required String labelText,
+    required IconData prefixIcon,
+    String? hintText,
+    Widget? suffixIcon,
+  }) {
+    return InputDecoration(
+      labelText: labelText,
+      hintText: hintText,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: const BorderSide(color: Colors.grey),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: const BorderSide(color: Colors.grey),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: BorderSide(color: Theme.of(context).primaryColor),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: const BorderSide(color: Colors.red),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12.0),
+        borderSide: const BorderSide(color: Colors.red),
+      ),
+      filled: true,
+      fillColor: Colors.white,
+      prefixIcon: Icon(prefixIcon),
+      suffixIcon: suffixIcon,
+      contentPadding: const EdgeInsets.symmetric(vertical: 16, horizontal: 16),
+    );
+  }
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) {
       return;
@@ -38,6 +76,10 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(
             content: Text(error.toString()),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
         );
       }
@@ -86,6 +128,10 @@ class _LoginScreenState extends State<LoginScreen> {
           SnackBar(
             content: Text(error.toString()),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
         );
       }
@@ -96,6 +142,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
     debugPrint('in login screen, isLoading: ${authProvider.isLoading}');
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Login'),
@@ -111,26 +158,50 @@ class _LoginScreenState extends State<LoginScreen> {
           child: ListView(
             children: [
               const SizedBox(height: 20),
-              const Icon(Icons.food_bank, size: 80, color: Colors.blue),
-              const SizedBox(height: 20),
+
+              // Logo at the top - Simplified without container
+              Image.asset(
+                'assets/images/Logo.png',
+                height: 220,
+                width: 220,
+                fit: BoxFit.contain,
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    height: 220,
+                    width: 220,
+                    alignment: Alignment.center,
+                    child: const Icon(
+                      Icons.food_bank,
+                      size: 60,
+                      color: Colors.orange,
+                    ),
+                  );
+                },
+              ),
+
+              const SizedBox(height: 8),
               const Text(
                 'Welcome Back',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.bold,
+                ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 10),
+              const SizedBox(height: 8),
               const Text(
                 'Sign in to continue helping fight hunger',
                 style: TextStyle(fontSize: 16, color: Colors.grey),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 40),
+
+              // Email Field
               TextFormField(
                 controller: _emailController,
-                decoration: const InputDecoration(
+                decoration: _roundedInputDecoration(
                   labelText: 'Email Address',
-                  border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.email),
+                  prefixIcon: Icons.email,
                 ),
                 validator: (value) {
                   if (value?.isEmpty ?? true) {
@@ -142,18 +213,20 @@ class _LoginScreenState extends State<LoginScreen> {
                   return null;
                 },
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+
+              // Password Field
               TextFormField(
                 controller: _passwordController,
-                decoration: InputDecoration(
+                decoration: _roundedInputDecoration(
                   labelText: 'Password',
-                  border: const OutlineInputBorder(),
-                  prefixIcon: const Icon(Icons.lock),
+                  prefixIcon: Icons.lock,
                   suffixIcon: IconButton(
                     icon: Icon(
                       _obscurePassword
                           ? Icons.visibility
                           : Icons.visibility_off,
+                      color: Colors.grey,
                     ),
                     onPressed: () =>
                         setState(() => _obscurePassword = !_obscurePassword),
@@ -170,60 +243,157 @@ class _LoginScreenState extends State<LoginScreen> {
                   return null;
                 },
               ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Checkbox(
-                    value: _saveLoginInfo,
-                    onChanged: (value) =>
-                        setState(() => _saveLoginInfo = value!),
+              const SizedBox(height: 16),
+
+              // Remember Me & Forgot Password
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  color: Colors.white,
+                  border: Border.all(color: Colors.grey.shade300),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(
+                    children: [
+                      Checkbox(
+                        value: _saveLoginInfo,
+                        onChanged: (value) =>
+                            setState(() => _saveLoginInfo = value!),
+                      ),
+                      const Text('Remember me'),
+                      const Spacer(),
+                      TextButton(
+                        onPressed: () {
+                          // Forgot password functionality
+                        },
+                        child: const Text('Forgot Password?'),
+                      ),
+                    ],
                   ),
-                  const Text('Remember me'),
-                  const Spacer(),
-                  TextButton(
-                    onPressed: () {
-                      // Forgot password functionality
-                    },
-                    child: const Text('Forgot Password?'),
-                  ),
-                ],
+                ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
+
+              // Sign In Button
               SizedBox(
                 width: double.infinity,
                 height: 50,
                 child: ElevatedButton(
                   onPressed: authProvider.isLoading ? null : _login,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Theme.of(context).primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    elevation: 2,
+                  ),
                   child: authProvider.isLoading
                       ? const SizedBox(
                           height: 20,
                           width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
                         )
-                      : const Text('Sign In', style: TextStyle(fontSize: 16)),
+                      : const Text(
+                          'Sign In',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
                 ),
               ),
-              const SizedBox(height: 20),
+              const SizedBox(height: 24),
+
+              // OR Divider
               const Row(
                 children: [
-                  Expanded(child: Divider()),
+                  Expanded(
+                    child: Divider(
+                      thickness: 1,
+                    ),
+                  ),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: 15),
-                    child: Text('OR'),
+                    child: Text(
+                      'OR',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
                   ),
-                  Expanded(child: Divider()),
+                  Expanded(
+                    child: Divider(
+                      thickness: 1,
+                    ),
+                  ),
                 ],
               ),
-              const SizedBox(height: 20),
-              OutlinedButton.icon(
-                onPressed: authProvider.isLoading ? null : _googleSignIn,
-                icon: Image.asset(
-                  'assets/images/google.png',
-                  width: 20,
-                  height: 20,
+              const SizedBox(height: 24),
+
+              // Google Sign In Button
+              SizedBox(
+                height: 50,
+                child: OutlinedButton.icon(
+                  onPressed: authProvider.isLoading ? null : _googleSignIn,
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    side: BorderSide(color: Colors.grey.shade300),
+                  ),
+                  icon: Image.asset(
+                    'assets/images/google.png',
+                    width: 20,
+                    height: 20,
+                    errorBuilder: (context, error, stackTrace) {
+                      return const Icon(
+                        Icons.g_mobiledata,
+                        size: 24,
+                        color: Colors.red,
+                      );
+                    },
+                  ),
+                  label: const Text(
+                    'Sign in with Google',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.black87,
+                    ),
+                  ),
                 ),
-                label: const Text('Sign in with Google'),
               ),
+
+              // Error Message
+              if (authProvider.error != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(Icons.error, color: Colors.red.shade600),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            authProvider.error!,
+                            style: TextStyle(color: Colors.red.shade700),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
             ],
           ),
         ),

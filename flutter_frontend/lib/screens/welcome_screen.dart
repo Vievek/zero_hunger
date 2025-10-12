@@ -15,21 +15,34 @@ class WelcomeScreen extends StatelessWidget {
           child: Column(
             children: [
               const Spacer(),
-              const Icon(Icons.food_bank, size: 120, color: Colors.blue),
+              // Logo from assets
+              Image.asset(
+                'assets/images/Logo.png', // Make sure to add your logo to pubspec.yaml
+                width: 220,
+                height: 220,
+                fit: BoxFit.contain,
+              ),
               const SizedBox(height: 20),
               const Text(
-                'Welcome to Zero Hunger',
+                'Welcome to Zerobye',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: Colors.blue,
+                  color: Color(0xFF9FB301), // #9fb301 color
+                  fontFamily:
+                      'JockeyOne', // Make sure to add this font to pubspec.yaml
                 ),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 10),
               Text(
                 'Join us in the fight against hunger. Together we can make a difference.',
-                style: TextStyle(fontSize: 16, color: Colors.grey[600]),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Colors.grey[600],
+                  fontFamily:
+                      'GeistMono', // Make sure to add this font to pubspec.yaml
+                ),
                 textAlign: TextAlign.center,
               ),
               const Spacer(),
@@ -47,7 +60,10 @@ class WelcomeScreen extends StatelessWidget {
                   },
                   child: const Text(
                     'Get Started',
-                    style: TextStyle(fontSize: 18),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontFamily: 'GeistMono', // Apply GeistMono to buttons too
+                    ),
                   ),
                 ),
               ),
@@ -66,7 +82,10 @@ class WelcomeScreen extends StatelessWidget {
                   },
                   child: const Text(
                     'Already have an account',
-                    style: TextStyle(fontSize: 18),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontFamily: 'GeistMono', // Apply GeistMono to buttons too
+                    ),
                   ),
                 ),
               ),

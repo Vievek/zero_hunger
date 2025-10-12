@@ -53,19 +53,16 @@ class _LaunchScreenState extends State<LaunchScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.food_bank, size: 100, color: Colors.white),
+            // Your logo from assets
+            Image.asset(
+              'assets/images/logo.png', // Make sure this path matches your actual asset path
+              width: 150, // Adjust size as needed
+              height: 150,
+              fit: BoxFit.contain,
+            ),
             const SizedBox(height: 20),
             const Text(
-              'Zero Hunger',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 10),
-            const Text(
-              'Fighting Hunger Together',
+              'Zero Waste Zero Hunger', // Tagline only
               style: TextStyle(color: Colors.white70, fontSize: 16),
             ),
             const SizedBox(height: 30),
