@@ -27,7 +27,23 @@ class _SignupScreenState extends State<SignupScreen> {
   final TextEditingController _businessTypeController = TextEditingController();
   final TextEditingController _orgNameController = TextEditingController();
   final TextEditingController _capacityController = TextEditingController();
+
+  // Additional role-specific controllers
+  final TextEditingController _businessAddressController =
+      TextEditingController();
+  final TextEditingController _registrationNumberController =
+      TextEditingController();
+  final TextEditingController _contactNumberController =
+      TextEditingController();
+  final TextEditingController _maxDistanceController = TextEditingController();
+  final TextEditingController _volunteerCapacityController =
+      TextEditingController();
+
   String? _selectedVehicleType;
+  String? _selectedOrgType;
+  final List<String> _selectedFoodTypes = [];
+  final List<String> _selectedDietaryRestrictions = [];
+  final List<String> _selectedPreferredFoodTypes = [];
 
   late String _selectedRole;
   bool _saveLogin = true;
@@ -50,6 +66,11 @@ class _SignupScreenState extends State<SignupScreen> {
     _businessTypeController.dispose();
     _orgNameController.dispose();
     _capacityController.dispose();
+    _businessAddressController.dispose();
+    _registrationNumberController.dispose();
+    _contactNumberController.dispose();
+    _maxDistanceController.dispose();
+    _volunteerCapacityController.dispose();
     super.dispose();
   }
 
@@ -59,15 +80,30 @@ class _SignupScreenState extends State<SignupScreen> {
         return {
           'businessName': _businessNameController.text,
           'businessType': _businessTypeController.text,
+          'businessAddress': _businessAddressController.text.isNotEmpty
+              ? _businessAddressController.text
+              : _addressController.text,
+          'registrationNumber': _registrationNumberController.text,
+          'foodTypes': _selectedFoodTypes,
         };
       case 'recipient':
         return {
           'organizationName': _orgNameController.text,
-          'capacity': int.tryParse(_capacityController.text) ?? 0,
+          'organizationType': _selectedOrgType ?? 'other',
+          'address': _addressController.text,
+          'capacity': int.tryParse(_capacityController.text) ?? 50,
+          'dietaryRestrictions': _selectedDietaryRestrictions,
+          'preferredFoodTypes': _selectedPreferredFoodTypes,
         };
       case 'volunteer':
         return {
           'vehicleType': _selectedVehicleType,
+          'contactNumber': _contactNumberController.text.isNotEmpty
+              ? _contactNumberController.text
+              : _phoneController.text,
+          'maxDistance': int.tryParse(_maxDistanceController.text) ?? 20,
+          'capacity': int.tryParse(_volunteerCapacityController.text) ?? 10,
+          'availability': [], // Can be added later in profile completion
         };
       default:
         return null;
@@ -82,7 +118,7 @@ class _SignupScreenState extends State<SignupScreen> {
             TextFormField(
               controller: _businessNameController,
               decoration: const InputDecoration(
-                labelText: 'Business Name',
+                labelText: 'Business Name *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.business),
               ),
@@ -97,7 +133,7 @@ class _SignupScreenState extends State<SignupScreen> {
             TextFormField(
               controller: _businessTypeController,
               decoration: const InputDecoration(
-                labelText: 'Business Type',
+                labelText: 'Business Type *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.category),
               ),
@@ -109,6 +145,26 @@ class _SignupScreenState extends State<SignupScreen> {
               },
             ),
             const SizedBox(height: 16),
+            TextFormField(
+              controller: _businessAddressController,
+              decoration: const InputDecoration(
+                labelText: 'Business Address',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.location_on),
+                hintText: 'Leave empty to use personal address',
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _registrationNumberController,
+              decoration: const InputDecoration(
+                labelText: 'Registration Number',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.assignment),
+              ),
+            ),
+            const SizedBox(height: 16),
+            // Food types multi-select would go here
           ],
         );
       case 'recipient':
@@ -117,7 +173,7 @@ class _SignupScreenState extends State<SignupScreen> {
             TextFormField(
               controller: _orgNameController,
               decoration: const InputDecoration(
-                labelText: 'Organization Name',
+                labelText: 'Organization Name *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.people),
               ),
@@ -129,10 +185,40 @@ class _SignupScreenState extends State<SignupScreen> {
               },
             ),
             const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              initialValue: _selectedOrgType,
+              decoration: const InputDecoration(
+                labelText: 'Organization Type *',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.category),
+              ),
+              items: const [
+                DropdownMenuItem(value: 'shelter', child: Text('Shelter')),
+                DropdownMenuItem(
+                    value: 'community_kitchen',
+                    child: Text('Community Kitchen')),
+                DropdownMenuItem(value: 'food_bank', child: Text('Food Bank')),
+                DropdownMenuItem(
+                    value: 'religious', child: Text('Religious Organization')),
+                DropdownMenuItem(value: 'other', child: Text('Other')),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _selectedOrgType = value;
+                });
+              },
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return 'Please select organization type';
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
             TextFormField(
               controller: _capacityController,
               decoration: const InputDecoration(
-                labelText: 'Capacity (people)',
+                labelText: 'Capacity (people) *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.group),
               ),
@@ -140,6 +226,10 @@ class _SignupScreenState extends State<SignupScreen> {
               validator: (value) {
                 if (value == null || value.isEmpty) {
                   return 'Please enter capacity';
+                }
+                final capacity = int.tryParse(value);
+                if (capacity == null || capacity < 1) {
+                  return 'Please enter a valid capacity';
                 }
                 return null;
               },
@@ -151,9 +241,9 @@ class _SignupScreenState extends State<SignupScreen> {
         return Column(
           children: [
             DropdownButtonFormField<String>(
-              initialValue:  _selectedVehicleType,
+              initialValue: _selectedVehicleType,
               decoration: const InputDecoration(
-                labelText: 'Vehicle Type',
+                labelText: 'Vehicle Type *',
                 border: OutlineInputBorder(),
                 prefixIcon: Icon(Icons.directions_car),
               ),
@@ -177,6 +267,37 @@ class _SignupScreenState extends State<SignupScreen> {
               },
             ),
             const SizedBox(height: 16),
+            TextFormField(
+              controller: _contactNumberController,
+              decoration: const InputDecoration(
+                labelText: 'Contact Number',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.phone),
+                hintText: 'Leave empty to use main phone number',
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _maxDistanceController,
+              decoration: const InputDecoration(
+                labelText: 'Max Distance (km)',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.place),
+                hintText: 'Default: 20 km',
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _volunteerCapacityController,
+              decoration: const InputDecoration(
+                labelText: 'Delivery Capacity',
+                border: OutlineInputBorder(),
+                prefixIcon: Icon(Icons.local_shipping),
+                hintText: 'Default: 10 deliveries',
+              ),
+              keyboardType: TextInputType.number,
+            ),
           ],
         );
       default:

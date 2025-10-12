@@ -30,6 +30,16 @@ exports.register = async (req, res) => {
       });
     }
 
+    // Validate role
+    const validRoles = ["donor", "recipient", "volunteer", "admin"];
+    if (!validRoles.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Invalid role. Must be one of: donor, recipient, volunteer, admin",
+      });
+    }
+
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({
@@ -38,36 +48,68 @@ exports.register = async (req, res) => {
       });
     }
 
-    // Enhanced user creation with validation
+    // Enhanced user creation with proper field mapping
     const userData = {
       name,
       email,
       password,
       role,
-      contactInfo: { phone, address },
+      contactInfo: {
+        phone: phone || "",
+        address: address || "",
+      },
       profileCompleted: true,
     };
 
-    // Add role-specific details with validation
-    if (role === "donor" && donorDetails) {
-      userData.donorDetails = donorDetails;
-    } else if (role === "recipient" && recipientDetails) {
-      userData.recipientDetails = {
-        ...recipientDetails,
-        verificationStatus: "pending",
+    // Add role-specific details with proper validation
+    if (role === "donor") {
+      if (!donorDetails?.businessName) {
+        return res.status(400).json({
+          success: false,
+          message: "Business name is required for donors",
+        });
+      }
+      userData.donorDetails = {
+        businessName: donorDetails.businessName,
+        businessType: donorDetails.businessType || "",
+        businessAddress: donorDetails.businessAddress || address || "",
+        foodTypes: donorDetails.foodTypes || [],
+        registrationNumber: donorDetails.registrationNumber || "",
+        isActive: true,
       };
-
-      // Validate recipient organization details
-      if (!recipientDetails.organizationName) {
+    } else if (role === "recipient") {
+      if (!recipientDetails?.organizationName) {
         return res.status(400).json({
           success: false,
           message: "Organization name is required for recipients",
         });
       }
-    } else if (role === "volunteer" && volunteerDetails) {
+      userData.recipientDetails = {
+        organizationName: recipientDetails.organizationName,
+        organizationType: recipientDetails.organizationType || "other",
+        address: recipientDetails.address || address || "",
+        capacity: recipientDetails.capacity || 50,
+        dietaryRestrictions: recipientDetails.dietaryRestrictions || [],
+        preferredFoodTypes: recipientDetails.preferredFoodTypes || [],
+        verificationStatus: "pending",
+        isActive: true,
+        currentLoad: 0,
+      };
+    } else if (role === "volunteer") {
       userData.volunteerDetails = {
-        ...volunteerDetails,
+        vehicleType: volunteerDetails?.vehicleType || "none",
+        contactNumber: volunteerDetails?.contactNumber || phone || "",
+        availability: volunteerDetails?.availability || [],
         isAvailable: true,
+        maxDistance: volunteerDetails?.maxDistance || 20,
+        capacity: volunteerDetails?.capacity || 10,
+        currentTasks: 0,
+        volunteerMetrics: {
+          completedDeliveries: 0,
+          totalDistance: 0,
+          averageRating: 0,
+          reliabilityScore: 100,
+        },
       };
     }
 
@@ -97,10 +139,7 @@ exports.register = async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Server error during registration",
-      error:
-        process.env.NODE_ENV === "production"
-          ? "Internal server error"
-          : error.message,
+      error: error.message,
     });
   }
 };
