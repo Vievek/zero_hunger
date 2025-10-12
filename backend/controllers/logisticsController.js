@@ -254,54 +254,68 @@ exports.updateTaskStatus = async (req, res) => {
     if (status === "picked_up" && !task.actualPickupTime) {
       task.actualPickupTime = now;
 
-      // Update donation status
-      await Donation.findByIdAndUpdate(task.donation._id, {
-        status: "picked_up",
-        pickupTime: now,
-      });
+      // FIX: Check if donation exists before updating
+      if (task.donation && task.donation._id) {
+        // Update donation status
+        await Donation.findByIdAndUpdate(task.donation._id, {
+          status: "picked_up",
+          pickupTime: now,
+        });
 
-      // Send pickup notification
-      await notificationService.sendStatusUpdate(
-        task.donation.donor,
-        "Donation Picked Up! 📦",
-        `Your donation has been picked up by the volunteer and is on its way.`,
-        { taskId: task._id, status }
-      );
+        // Send pickup notification only if donor exists
+        if (task.donation.donor) {
+          await notificationService.sendStatusUpdate(
+            task.donation.donor,
+            "Donation Picked Up! 📦",
+            `Your donation has been picked up by the volunteer and is on its way.`,
+            { taskId: task._id, status }
+          );
+        }
+      } else {
+        console.warn(`⚠️ Task ${taskId} has no associated donation`);
+      }
     } else if (status === "in_transit") {
       // Update ETA when starting transit
       await task.updateETA();
     } else if (status === "delivered" && !task.actualDeliveryTime) {
       task.actualDeliveryTime = now;
 
-      // Update donation status
-      await Donation.findByIdAndUpdate(task.donation._id, {
-        status: "delivered",
-        deliveryTime: now,
-      });
+      // FIX: Check if donation exists before updating
+      if (task.donation && task.donation._id) {
+        // Update donation status
+        await Donation.findByIdAndUpdate(task.donation._id, {
+          status: "delivered",
+          deliveryTime: now,
+        });
 
-      // Calculate completion time
-      if (task.actualPickupTime) {
-        task.completionTime = (now - task.actualPickupTime) / 1000;
+        // Calculate completion time
+        if (task.actualPickupTime) {
+          task.completionTime = (now - task.actualPickupTime) / 1000;
+        }
+
+        // Send delivery notifications only if recipients exist
+        if (task.donation.donor) {
+          await notificationService.sendStatusUpdate(
+            task.donation.donor,
+            "Donation Delivered! 🎉",
+            `Your donation has been successfully delivered to the recipient.`,
+            { taskId: task._id, status }
+          );
+        }
+
+        if (task.donation.acceptedBy) {
+          await notificationService.sendStatusUpdate(
+            task.donation.acceptedBy,
+            "Donation Delivered! 🎉",
+            `Your donation has been delivered and is ready for distribution.`,
+            { taskId: task._id, status }
+          );
+        }
+      } else {
+        console.warn(`⚠️ Task ${taskId} has no associated donation`);
       }
 
-      // Send delivery notifications
-      await notificationService.sendStatusUpdate(
-        task.donation.donor,
-        "Donation Delivered! 🎉",
-        `Your donation has been successfully delivered to the recipient.`,
-        { taskId: task._id, status }
-      );
-
-      if (task.donation.acceptedBy) {
-        await notificationService.sendStatusUpdate(
-          task.donation.acceptedBy,
-          "Donation Delivered! 🎉",
-          `Your donation has been delivered and is ready for distribution.`,
-          { taskId: task._id, status }
-        );
-      }
-
-      // Update volunteer metrics
+      // Update volunteer metrics regardless of donation status
       await updateVolunteerMetrics(req.user.id);
     } else if (status === "cancelled") {
       // Handle task cancellation
@@ -552,6 +566,7 @@ async function updateVolunteerMetrics(volunteerId) {
 }
 
 // Helper function to handle task cancellation
+// Helper function to handle task cancellation
 async function handleTaskCancellation(task, notes) {
   try {
     // Reset task assignment
@@ -560,19 +575,25 @@ async function handleTaskCancellation(task, notes) {
     task.cancellationNotes = notes;
     task.cancelledAt = new Date();
 
-    // Reset donation status
-    await Donation.findByIdAndUpdate(task.donation._id, {
-      assignedVolunteer: null,
-      status: "available",
-    });
+    // FIX: Only reset donation status if donation exists
+    if (task.donation && task.donation._id) {
+      await Donation.findByIdAndUpdate(task.donation._id, {
+        assignedVolunteer: null,
+        status: "available",
+      });
 
-    // Send cancellation notification
-    await notificationService.sendStatusUpdate(
-      task.donation.donor,
-      "Delivery Cancelled ❌",
-      `The volunteer has cancelled the delivery task. ${notes || ""}`,
-      { taskId: task._id, status: "cancelled" }
-    );
+      // Send cancellation notification only if donor exists
+      if (task.donation.donor) {
+        await notificationService.sendStatusUpdate(
+          task.donation.donor,
+          "Delivery Cancelled ❌",
+          `The volunteer has cancelled the delivery task. ${notes || ""}`,
+          { taskId: task._id, status: "cancelled" }
+        );
+      }
+    } else {
+      console.warn(`⚠️ Task ${task._id} has no associated donation for cancellation`);
+    }
   } catch (error) {
     console.error("Task cancellation handling error:", error);
     throw error;
