@@ -30,7 +30,7 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
   Future<void> _initializeDashboard() async {
     final provider = Provider.of<LogisticsProvider>(context, listen: false);
 
-    // Start all API calls simultaneously but don't wait for all
+    // Start all API calls simultaneously
     final locationFuture = _initializeLocation(provider);
     final tasksFuture = _initializeTasks(provider);
     final statsFuture = _initializeStats(provider);
@@ -67,7 +67,6 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
 
   Future<void> _initializeTasks(LogisticsProvider provider) async {
     try {
-      await provider.fetchMyTasks();
       await provider.fetchAvailableTasks();
       setState(() {
         _tasksLoaded = true;
@@ -124,6 +123,10 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
     }
   }
 
+  void _navigateToMyTasks() {
+    Navigator.pushNamed(context, '/volunteer-tasks');
+  }
+
   @override
   Widget build(BuildContext context) {
     final logisticsProvider = Provider.of<LogisticsProvider>(context);
@@ -144,34 +147,14 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
 
                 const SizedBox(height: 16),
 
-                // Tabs for Available Tasks and My Tasks
-                Expanded(
-                  child: DefaultTabController(
-                    length: 2,
-                    child: Column(
-                      children: [
-                        const TabBar(
-                          tabs: [
-                            Tab(
-                                icon: Icon(Icons.list),
-                                text: 'Available Tasks'),
-                            Tab(icon: Icon(Icons.assignment), text: 'My Tasks'),
-                          ],
-                        ),
-                        Expanded(
-                          child: TabBarView(
-                            children: [
-                              // Available Tasks Tab
-                              _buildAvailableTasksTab(logisticsProvider),
+                // Quick Actions
+                _buildQuickActions(),
 
-                              // My Tasks Tab
-                              _buildMyTasksTab(logisticsProvider),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                const SizedBox(height: 16),
+
+                // Available Tasks Section
+                Expanded(
+                  child: _buildAvailableTasksSection(logisticsProvider),
                 ),
               ],
             ),
@@ -306,7 +289,7 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
   }
 
   Widget _buildStatsCard(LogisticsProvider provider) {
-    final stats = provider.taskStats;
+    final stats = provider.volunteerStats;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -319,11 +302,11 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
             children: [
               _buildStatItem(
                   'Available', provider.availableTasks.length, Colors.blue),
-              _buildStatItem('Assigned', stats['assigned'] ?? 0, Colors.orange),
+              _buildStatItem('My Tasks', provider.tasks.length, Colors.orange),
               _buildStatItem(
-                  'In Progress', stats['in_progress'] ?? 0, Colors.purple),
-              _buildStatItem(
-                  'Completed', stats['completed'] ?? 0, Colors.green),
+                  'Completed', stats['completedTasks'] ?? 0, Colors.green),
+              _buildStatItem('Rating',
+                  (stats['averageRating'] ?? 0.0).toDouble(), Colors.purple),
             ],
           ),
         ),
@@ -331,7 +314,7 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
     );
   }
 
-  Widget _buildStatItem(String label, int value, Color color) {
+  Widget _buildStatItem(String label, dynamic value, Color color) {
     return Column(
       children: [
         Container(
@@ -348,7 +331,7 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
         ),
         const SizedBox(height: 8),
         Text(
-          value.toString(),
+          value is double ? value.toStringAsFixed(1) : value.toString(),
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
@@ -363,16 +346,70 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
     );
   }
 
-  Widget _buildAvailableTasksTab(LogisticsProvider provider) {
-    return provider.isLoading && !_tasksLoaded
-        ? const Center(child: CircularProgressIndicator())
-        : _buildAvailableTasksList(provider.availableTasks, provider);
+  Widget _buildQuickActions() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: _navigateToMyTasks,
+              icon: const Icon(Icons.assignment),
+              label: const Text('My Tasks'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Provider.of<LogisticsProvider>(context, listen: false)
+                    .fetchAvailableTasks();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Refresh'),
+              style: OutlinedButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
-  Widget _buildMyTasksTab(LogisticsProvider provider) {
-    return provider.isLoading && !_tasksLoaded
-        ? const Center(child: CircularProgressIndicator())
-        : _buildTasksList(provider.tasks, provider);
+  Widget _buildAvailableTasksSection(LogisticsProvider provider) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Row(
+            children: [
+              const Text(
+                'Available Tasks Nearby',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Chip(
+                label: Text('${provider.availableTasks.length} tasks'),
+                backgroundColor: Colors.blue.withAlpha(30),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: provider.isLoading && !_tasksLoaded
+              ? const Center(child: CircularProgressIndicator())
+              : _buildAvailableTasksList(provider.availableTasks, provider),
+        ),
+      ],
+    );
   }
 
   Widget _buildAvailableTasksList(
@@ -390,26 +427,6 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
         itemBuilder: (context, index) {
           final task = tasks[index];
           return _buildAvailableTaskCard(task, provider);
-        },
-      ),
-    );
-  }
-
-  Widget _buildTasksList(
-      List<LogisticsTask> tasks, LogisticsProvider provider) {
-    if (tasks.isEmpty) {
-      return _buildEmptyMyTasksState();
-    }
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        await provider.fetchMyTasks();
-      },
-      child: ListView.builder(
-        itemCount: tasks.length,
-        itemBuilder: (context, index) {
-          final task = tasks[index];
-          return _buildTaskCard(task, provider);
         },
       ),
     );
@@ -460,37 +477,13 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
     );
   }
 
-  Widget _buildEmptyMyTasksState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.assignment, size: 64, color: Colors.grey),
-          const SizedBox(height: 16),
-          const Text(
-            'No Tasks Assigned',
-            style: TextStyle(fontSize: 18, color: Colors.grey),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Accept available tasks to get started',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
-          ),
-          const SizedBox(height: 20),
-          ElevatedButton.icon(
-            onPressed: () {
-              DefaultTabController.of(context).animateTo(0);
-            },
-            icon: const Icon(Icons.list),
-            label: const Text('View Available Tasks'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildAvailableTaskCard(
       LogisticsTask task, LogisticsProvider provider) {
+    final distance = provider.currentLocation != null
+        ? task.calculateDistanceFrom(
+            provider.currentLocation!.lat, provider.currentLocation!.lng)
+        : null;
+
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Padding(
@@ -503,15 +496,28 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
                 const Icon(Icons.local_shipping, color: Colors.blue, size: 30),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: Text(
-                    'Delivery Task',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Delivery Task',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      if (distance != null)
+                        Text(
+                          '${distance.toStringAsFixed(1)} km away',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                    ],
                   ),
                 ),
-                _getStatusChip(task.status),
+                _getUrgencyChip(task.urgency),
               ],
             ),
             const SizedBox(height: 12),
@@ -523,6 +529,12 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
               _buildTaskInfo(
                 '⏰ Scheduled',
                 _formatDateTime(task.scheduledPickupTime!),
+              ),
+            if (task.specialInstructions != null &&
+                task.specialInstructions!.isNotEmpty)
+              _buildTaskInfo(
+                '📝 Instructions',
+                task.specialInstructions!,
               ),
             const SizedBox(height: 12),
             SizedBox(
@@ -541,38 +553,18 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
                         width: 16,
                         child: CircularProgressIndicator(strokeWidth: 2),
                       )
-                    : const Text('Accept Task'),
+                    : const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.check, size: 18),
+                          SizedBox(width: 8),
+                          Text('Accept Task'),
+                        ],
+                      ),
               ),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildTaskCard(LogisticsTask task, LogisticsProvider provider) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: ListTile(
-        leading: _getTaskIcon(task.status),
-        title: Text(
-          'Delivery Task',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            Text('From: ${task.pickupLocation['address'] ?? 'Unknown'}'),
-            Text('To: ${task.dropoffLocation['address'] ?? 'Unknown'}'),
-            const SizedBox(height: 4),
-            _getStatusChip(task.status),
-          ],
-        ),
-        trailing: const Icon(Icons.arrow_forward_ios, size: 16),
-        onTap: () {
-          // Navigate to task details
-        },
       ),
     );
   }
@@ -609,51 +601,27 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
     );
   }
 
-  Widget _getTaskIcon(String status) {
-    switch (status) {
-      case 'assigned':
-        return const Icon(Icons.assignment, color: Colors.blue, size: 30);
-      case 'picked_up':
-        return const Icon(Icons.inventory_2, color: Colors.orange, size: 30);
-      case 'in_transit':
-        return const Icon(Icons.delivery_dining,
-            color: Colors.purple, size: 30);
-      case 'delivered':
-        return const Icon(Icons.check_circle, color: Colors.green, size: 30);
-      default:
-        return const Icon(Icons.pending, color: Colors.grey, size: 30);
-    }
-  }
-
-  Widget _getStatusChip(String status) {
+  Widget _getUrgencyChip(String? urgency) {
     Color chipColor;
-    String statusText;
+    String urgencyText;
 
-    switch (status) {
-      case 'assigned':
-        chipColor = Colors.blue;
-        statusText = 'Assigned';
+    switch (urgency) {
+      case 'critical':
+        chipColor = Colors.red;
+        urgencyText = 'Critical';
         break;
-      case 'picked_up':
+      case 'high':
         chipColor = Colors.orange;
-        statusText = 'Picked Up';
-        break;
-      case 'in_transit':
-        chipColor = Colors.purple;
-        statusText = 'In Transit';
-        break;
-      case 'delivered':
-        chipColor = Colors.green;
-        statusText = 'Delivered';
+        urgencyText = 'High';
         break;
       default:
-        chipColor = Colors.grey;
-        statusText = 'Pending';
+        chipColor = Colors.blue;
+        urgencyText = 'Normal';
     }
 
     return Chip(
       label: Text(
-        statusText,
+        urgencyText,
         style: const TextStyle(
           fontSize: 10,
           color: Colors.white,
@@ -678,6 +646,9 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
             backgroundColor: Colors.green,
           ),
         );
+
+        // Show directions dialog after accepting
+        _showDirectionsDialog(taskId, provider);
       }
     } catch (e) {
       if (mounted) {
@@ -691,16 +662,82 @@ class _VolunteerDashboardScreenState extends State<VolunteerDashboardScreen> {
     }
   }
 
+  void _showDirectionsDialog(String taskId, LogisticsProvider provider) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Task Accepted! 🎉'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Your task has been accepted successfully.'),
+            SizedBox(height: 12),
+            Text('Would you like to view directions to the pickup location?'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('LATER'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _openMapsDirections(taskId, provider);
+            },
+            child: const Text('GET DIRECTIONS'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _openMapsDirections(String taskId, LogisticsProvider provider) {
+    final task = provider.availableTasks.firstWhere(
+      (t) => t.id == taskId,
+      orElse: () => provider.tasks.firstWhere(
+        (t) => t.id == taskId,
+      ),
+    );
+
+    final pickupLat = task.pickupLocation['lat'];
+    final pickupLng = task.pickupLocation['lng'];
+    final pickupAddress = task.pickupLocation['address'];
+
+    if (pickupLat != null && pickupLng != null) {
+      // Open in Google Maps
+      final url =
+          'https://www.google.com/maps/dir/?api=1&destination=$pickupLat,$pickupLng&destination_place_id=${Uri.encodeComponent(pickupAddress ?? '')}';
+
+      // You can use url_launcher package to open the URL
+      // For now, show a snackbar
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+              'Opening directions to: ${pickupAddress ?? 'pickup location'}'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+
+      // Log the URL for debugging
+      debugPrint('Maps URL: $url');
+
+      // In a real app, you would use:
+      // launchUrl(Uri.parse(url));
+    }
+  }
+
   IconData _getStatIcon(String label) {
     switch (label.toLowerCase()) {
       case 'available':
         return Icons.list;
-      case 'assigned':
+      case 'my tasks':
         return Icons.assignment;
-      case 'in progress':
-        return Icons.delivery_dining;
       case 'completed':
         return Icons.check_circle;
+      case 'rating':
+        return Icons.star;
       default:
         return Icons.help;
     }

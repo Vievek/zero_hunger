@@ -65,11 +65,22 @@ exports.getAvailableTasks = async (req, res) => {
   }
 };
 
-// NEW: Accept a task manually
+// NEW: Accept a task manually - FIXED VERSION
 exports.acceptTask = async (req, res) => {
   try {
     const { taskId } = req.params;
     console.log(`✅ Volunteer ${req.user.id} accepting task: ${taskId}`);
+
+    // FIRST: Verify the volunteer exists and is valid
+    const volunteer = await User.findById(req.user.id);
+    if (!volunteer || volunteer.role !== "volunteer") {
+      return res.status(403).json({
+        success: false,
+        message: "Only volunteers can accept tasks",
+      });
+    }
+
+    console.log(`👤 Volunteer found: ${volunteer._id}, ${volunteer.name}`);
 
     const task = await LogisticsTask.findById(taskId).populate("donation");
     if (!task) {
@@ -87,12 +98,14 @@ exports.acceptTask = async (req, res) => {
       });
     }
 
-    // Check if volunteer can accept more tasks
-    const volunteer = await User.findById(req.user.id);
-    const taskSize = await task.getTaskSize();
-    const canAccept = await volunteer.canAcceptTask(taskSize);
+    // SIMPLIFIED: Basic capacity check (remove the complex canAcceptTask check temporarily)
+    const activeTasksCount = await LogisticsTask.countDocuments({
+      volunteer: req.user.id,
+      status: { $in: ["assigned", "picked_up", "in_transit"] },
+    });
 
-    if (!canAccept) {
+    if (activeTasksCount >= 5) {
+      // Simple limit of 5 tasks
       return res.status(400).json({
         success: false,
         message:
@@ -130,18 +143,22 @@ exports.acceptTask = async (req, res) => {
     await task.save();
 
     // Update donation status
-    await Donation.findByIdAndUpdate(task.donation._id, {
-      assignedVolunteer: req.user.id,
-      status: "scheduled",
-    });
+    if (task.donation) {
+      await Donation.findByIdAndUpdate(task.donation._id, {
+        assignedVolunteer: req.user.id,
+        status: "scheduled",
+      });
+    }
 
     // Send notification to donor
-    await notificationService.sendStatusUpdate(
-      task.donation.donor,
-      "Volunteer Assigned! 🚗",
-      `A volunteer has accepted your donation delivery task.`,
-      { taskId: task._id, volunteerId: req.user.id }
-    );
+    if (task.donation && task.donation.donor) {
+      await notificationService.sendStatusUpdate(
+        task.donation.donor,
+        "Volunteer Assigned! 🚗",
+        `A volunteer has accepted your donation delivery task.`,
+        { taskId: task._id, volunteerId: req.user.id }
+      );
+    }
 
     console.log(`✅ Task ${taskId} accepted by volunteer ${req.user.id}`);
 
