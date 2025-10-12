@@ -18,15 +18,10 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _initializeData();
+      Provider.of<DonationProvider>(context, listen: false).fetchMyDonations();
+      Provider.of<DonationProvider>(context, listen: false)
+          .fetchDonationStats();
     });
-  }
-
-  Future<void> _initializeData() async {
-    final donationProvider =
-        Provider.of<DonationProvider>(context, listen: false);
-    await donationProvider.fetchMyDonations();
-    await donationProvider.fetchDonationStats();
   }
 
   @override
@@ -108,6 +103,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
 
   Widget _buildStatsCard(DonationProvider provider) {
     final stats = provider.donationStatsSummary;
+    final detailedStats = provider.donationStats;
 
     return Padding(
       padding: const EdgeInsets.all(16),
@@ -117,58 +113,35 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
-              // Top row - Basic counts
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _buildStatItem('Total', stats['total'] ?? 0, Icons.list_alt,
-                      Colors.blue),
-                  _buildStatItem('Active', stats['active'] ?? 0, Icons.refresh,
-                      Colors.green),
-                  _buildStatItem('Completed', stats['completed'] ?? 0,
-                      Icons.check_circle, Colors.purple),
+                  _buildStatItem('Total', stats['total'] ?? 0, Colors.blue),
+                  _buildStatItem('Active', stats['active'] ?? 0, Colors.green),
+                  _buildStatItem(
+                      'Completed', stats['completed'] ?? 0, Colors.purple),
+                  _buildStatItem(
+                      'Pending', stats['pending'] ?? 0, Colors.orange),
                 ],
               ),
-
-              const SizedBox(height: 16),
-
-              // Middle row - Additional statuses
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildStatItem('Pending', stats['pending'] ?? 0,
-                      Icons.pending, Colors.orange),
-                  _buildStatItem('Cancelled', stats['cancelled'] ?? 0,
-                      Icons.cancel, Colors.red),
-                  if (stats['recentDonations'] != null)
-                    _buildStatItem('Recent', stats['recentDonations'] ?? 0,
-                        Icons.calendar_today, Colors.teal),
-                ],
-              ),
-
-              const SizedBox(height: 16),
-              const Divider(),
-              const SizedBox(height: 8),
-
-              // Bottom section - Impact metrics
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _buildImpactItem(
-                      'Total Impact',
-                      '${stats['totalImpact'] ?? 0} items',
-                      Icons.people,
-                      'Successfully delivered'),
-                  _buildImpactItem(
-                      'Active Impact',
-                      '${stats['activeImpact'] ?? 0} items',
-                      Icons.trending_up,
-                      'Currently in progress'),
-                  if (stats['successRate'] != null && stats['successRate'] > 0)
-                    _buildImpactItem('Success Rate', '${stats['successRate']}%',
-                        Icons.emoji_events, 'Delivery success'),
-                ],
-              ),
+              if (detailedStats.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Divider(),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _buildImpactItem(
+                        'Total Impact',
+                        '${detailedStats['totalImpact'] ?? 0} meals',
+                        Icons.people),
+                    _buildImpactItem(
+                        'Total Quantity',
+                        '${detailedStats['totalQuantity'] ?? 0} units',
+                        Icons.scale),
+                  ],
+                ),
+              ],
             ],
           ),
         ),
@@ -176,7 +149,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
     );
   }
 
-  Widget _buildStatItem(String label, int value, IconData icon, Color color) {
+  Widget _buildStatItem(String label, int value, Color color) {
     return Column(
       children: [
         Container(
@@ -185,7 +158,11 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
             color: color.withAlpha(25),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: color, size: 20),
+          child: Icon(
+            _getStatIcon(label),
+            color: color,
+            size: 20,
+          ),
         ),
         const SizedBox(height: 8),
         Text(
@@ -204,8 +181,7 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
     );
   }
 
-  Widget _buildImpactItem(
-      String label, String value, IconData icon, String subtitle) {
+  Widget _buildImpactItem(String label, String value, IconData icon) {
     return Column(
       children: [
         Icon(icon, size: 24, color: Colors.blue),
@@ -221,13 +197,23 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
           label,
           style: const TextStyle(fontSize: 10, color: Colors.grey),
         ),
-        Text(
-          subtitle,
-          style: const TextStyle(fontSize: 8, color: Colors.grey),
-          textAlign: TextAlign.center,
-        ),
       ],
     );
+  }
+
+  IconData _getStatIcon(String label) {
+    switch (label.toLowerCase()) {
+      case 'total':
+        return Icons.list_alt;
+      case 'active':
+        return Icons.refresh;
+      case 'completed':
+        return Icons.check_circle;
+      case 'pending':
+        return Icons.pending;
+      default:
+        return Icons.help;
+    }
   }
 
   Widget _buildDonationsList(
@@ -667,35 +653,18 @@ class _DonorDashboardScreenState extends State<DonorDashboardScreen> {
   Future<void> _updateDonationStatus(
       String donationId, String status, DonationProvider provider) async {
     try {
-      // Show loading state
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Updating donation status...')),
-      );
-
       await provider.updateDonationStatus(donationId, status);
 
       if (mounted) {
         Navigator.pop(context); // Close the bottom sheet
-
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-                'Donation ${status == 'cancelled' ? 'cancelled' : 'updated'} successfully'),
-            backgroundColor:
-                status == 'cancelled' ? Colors.orange : Colors.green,
-          ),
+          SnackBar(content: Text('Donation $status successfully')),
         );
-
-        // Refresh the data to ensure stats are updated
-        await _initializeData();
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to update donation: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('Failed to update donation: $e')),
         );
       }
     }
