@@ -28,32 +28,58 @@ exports.getAvailableTasks = async (req, res) => {
       });
     }
 
+    console.log("📍 Volunteer location:", volunteerLocation);
+
     // Find tasks without volunteers within 5km radius
     const tasks = await LogisticsTask.find({
       volunteer: { $exists: false },
       status: "pending",
     }).populate("donation");
 
-    // Filter tasks within 5km radius
+    console.log(`📦 Found ${tasks.length} total pending tasks`);
+
+    // Filter tasks within 5km radius with better debugging
     const availableTasks = tasks.filter((task) => {
-      if (!task.pickupLocation.lat || !task.pickupLocation.lng) return false;
+      if (
+        !task.pickupLocation ||
+        !task.pickupLocation.lat ||
+        !task.pickupLocation.lng
+      ) {
+        console.log(`❌ Task ${task._id} missing pickup location`);
+        return false;
+      }
 
       const distance = calculateDistance(volunteerLocation, {
         lat: task.pickupLocation.lat,
         lng: task.pickupLocation.lng,
       });
 
+      console.log(`📍 Task ${task._id} distance: ${distance.toFixed(2)}km`);
+
       return distance <= 5; // 5km radius
     });
 
-    console.log(`📦 Found ${availableTasks.length} available tasks within 5km`);
+    console.log(`✅ Found ${availableTasks.length} available tasks within 5km`);
 
+    // Enhanced response with more details
     res.json({
       success: true,
       data: {
         tasks: availableTasks,
         total: availableTasks.length,
         volunteerLocation,
+        searchRadius: "5km",
+        tasksWithDetails: availableTasks.map((task) => ({
+          id: task._id,
+          pickupAddress: task.pickupLocation.address,
+          distance:
+            calculateDistance(volunteerLocation, {
+              lat: task.pickupLocation.lat,
+              lng: task.pickupLocation.lng,
+            }).toFixed(2) + "km",
+          urgency: task.urgency,
+          scheduledPickupTime: task.scheduledPickupTime,
+        })),
       },
     });
   } catch (error) {
@@ -98,11 +124,15 @@ exports.acceptTask = async (req, res) => {
       });
     }
 
-    // SIMPLIFIED: Basic capacity check (remove the complex canAcceptTask check temporarily)
+    // SIMPLIFIED: Basic capacity check
     const activeTasksCount = await LogisticsTask.countDocuments({
       volunteer: req.user.id,
       status: { $in: ["assigned", "picked_up", "in_transit"] },
     });
+
+    console.log(
+      `📊 Volunteer ${req.user.id} has ${activeTasksCount} active tasks`
+    );
 
     if (activeTasksCount >= 5) {
       // Simple limit of 5 tasks
@@ -128,6 +158,8 @@ exports.acceptTask = async (req, res) => {
         lng: task.pickupLocation.lng,
       });
 
+      console.log(`📍 Distance to task: ${distance.toFixed(2)}km`);
+
       if (distance > 5) {
         return res.status(400).json({
           success: false,
@@ -135,6 +167,8 @@ exports.acceptTask = async (req, res) => {
             "Task is too far from your current location (must be within 5km)",
         });
       }
+    } else {
+      console.log("⚠️  Location check skipped - missing location data");
     }
 
     // Assign volunteer to task
